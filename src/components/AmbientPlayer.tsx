@@ -512,13 +512,13 @@ export default function AmbientPlayer() {
         style={{
           width: '400px',
           borderRadius: '28px',
-          background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+          background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(253, 252, 250, 0.95)',
           backdropFilter: 'blur(32px)',
           WebkitBackdropFilter: 'blur(32px)',
-          border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(99, 102, 241, 0.15)',
+          border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(91, 123, 140, 0.12)',
           boxShadow: isDark
             ? '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05) inset'
-            : '0 25px 50px -12px rgba(99, 102, 241, 0.15), 0 8px 24px rgba(99, 102, 241, 0.08)'
+            : '0 25px 50px -12px rgba(139, 91, 165, 0.12), 0 8px 24px rgba(91, 123, 140, 0.08)'
         }}
         onMouseDown={handleDragStart}
         onTouchStart={handleDragStart}
@@ -563,7 +563,7 @@ export default function AmbientPlayer() {
                     ? 'bg-emerald-500/15 text-emerald-500 ring-2 ring-emerald-500/30 ring-offset-2 ring-offset-transparent'
                     : isDark
                       ? 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
-                      : 'text-slate-400 hover:text-slate-600 hover:bg-indigo-50/50'
+                      : 'text-slate-400 hover:text-slate-600 hover:bg-violet-50/50'
                   }
                 `}
                 title={sound.name}
@@ -626,12 +626,12 @@ export default function AmbientPlayer() {
           background: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.9)',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
-          border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(99, 102, 241, 0.15)',
+          border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(91, 123, 140, 0.12)',
           boxShadow: isPlaying
             ? '0 10px 40px -10px rgba(16, 185, 129, 0.35)'
             : isDark
               ? '0 10px 40px -10px rgba(0, 0, 0, 0.5)'
-              : '0 10px 40px -10px rgba(99, 102, 241, 0.15)'
+              : '0 10px 40px -10px rgba(139, 91, 165, 0.12)'
         }}
       >
         {isPlaying ? (
@@ -673,7 +673,7 @@ export default function AmbientPlayer() {
             background: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.9)',
             backdropFilter: 'blur(24px)',
             WebkitBackdropFilter: 'blur(24px)',
-            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(99, 102, 241, 0.15)',
+            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(91, 123, 140, 0.12)',
           }}
         >
           {isPlaying ? Icons.pause : Icons.play}

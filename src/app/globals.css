@@ -5,10 +5,19 @@
    ============================================ */
 
 /* ============================================
-   DARK THEME (default)
+   DARK THEME (default) - Lucas Blok accent colors
    ============================================ */
 :root,
 :root.dark {
+  /* Lucas Blok Color Palette (shared) */
+  --blok-cream: #F5F3EE;
+  --blok-cyan: #E8F4F8;
+  --blok-lavender: #D4A5D9;
+  --blok-light-blue: #B5E0F0;
+  --blok-medium-blue: #6BA3C9;
+  --blok-slate-teal: #5B7B8C;
+  --blok-violet: #8B5BA5;
+
   /* Refined dark theme - not pure black */
   --bg-primary: #121214;
   --bg-secondary: #1a1a1e;
@@ -26,10 +35,19 @@
   --text-secondary: #a1a1a6;
   --text-muted: #6e6e73;
 
-  /* Accent */
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-glow: rgba(59, 130, 246, 0.15);
+  /* Accent - slate teal primary (brighter for dark mode) */
+  --accent: #7A9BAD;
+  --accent-hover: #6B8C9E;
+  --accent-glow: rgba(122, 155, 173, 0.15);
+
+  /* Secondary accent - violet (brighter for dark mode) */
+  --accent-secondary: #A87BBF;
+  --accent-secondary-hover: #9A6DB1;
+  --accent-secondary-glow: rgba(168, 123, 191, 0.15);
+
+  /* Tertiary accent - lavender */
+  --accent-tertiary: #D4A5D9;
+  --accent-tertiary-glow: rgba(212, 165, 217, 0.15);
 
   /* Status */
   --success: #22c55e;
@@ -43,13 +61,13 @@
   --glass-bg: rgba(26, 26, 30, 0.8);
   --glass-border: rgba(255, 255, 255, 0.08);
 
-  /* Card shadows */
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.15);
-  --card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.2);
+  /* Card shadows with violet hint */
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(139, 91, 165, 0.05);
+  --card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(139, 91, 165, 0.08);
 
-  /* Gradients */
-  --gradient-border: linear-gradient(135deg, rgba(59, 130, 246, 0.4), rgba(139, 92, 246, 0.4));
-  --gradient-glow: radial-gradient(ellipse at center, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+  /* Gradients - lavender to violet */
+  --gradient-border: linear-gradient(135deg, rgba(212, 165, 217, 0.4), rgba(139, 91, 165, 0.4));
+  --gradient-glow: radial-gradient(ellipse at center, rgba(139, 91, 165, 0.12) 0%, transparent 70%);
   --bg-gradient: none;
 
   /* Theme toggle specific */
@@ -58,53 +76,71 @@
 }
 
 /* ============================================
-   LIGHT THEME - Premium blue/purple wash
+   LIGHT THEME - Lucas Blok inspired palette
    ============================================ */
 :root.light {
-  /* Backgrounds with subtle blue/purple tints */
-  --bg-primary: #f5f7fb;
-  --bg-secondary: rgba(248, 250, 255, 1);
-  --bg-tertiary: #eef1f8;
-  --bg-hover: #e8ecf4;
-  --bg-elevated: #ffffff;
+  /* Lucas Blok Color Palette */
+  --blok-cream: #F5F3EE;
+  --blok-cyan: #E8F4F8;
+  --blok-lavender: #D4A5D9;
+  --blok-light-blue: #B5E0F0;
+  --blok-medium-blue: #6BA3C9;
+  --blok-slate-teal: #5B7B8C;
+  --blok-violet: #8B5BA5;
 
-  /* Subtle gradient background */
-  --bg-gradient: linear-gradient(135deg, #f5f7fb 0%, #f7f5fb 100%);
+  /* Backgrounds - cream to soft cyan feel */
+  --bg-primary: #F5F3EE;
+  --bg-secondary: #F8F6F2;
+  --bg-tertiary: #EFEDEA;
+  --bg-hover: #E8E6E2;
+  --bg-elevated: #FDFCFA;
 
-  /* Borders with indigo tint */
-  --border-color: rgba(99, 102, 241, 0.1);
-  --border-subtle: rgba(99, 102, 241, 0.06);
-  --border-strong: rgba(99, 102, 241, 0.15);
+  /* Subtle gradient background - cream to cyan */
+  --bg-gradient: linear-gradient(180deg, #F5F3EE 0%, #EEF3F6 50%, #E8F4F8 100%);
 
-  /* Text with blue hints */
-  --text-primary: #1a2744;
-  --text-secondary: #6b7a99;
-  --text-muted: #8b99b5;
+  /* Borders with slate-teal tint */
+  --border-color: rgba(91, 123, 140, 0.12);
+  --border-subtle: rgba(91, 123, 140, 0.06);
+  --border-strong: rgba(91, 123, 140, 0.18);
 
-  /* Accent - indigo-blue for light mode */
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-glow: rgba(99, 102, 241, 0.12);
+  /* Text - warm slate tones */
+  --text-primary: #2D3E4A;
+  --text-secondary: #5B7B8C;
+  --text-muted: #8BA0AC;
 
-  /* Status - slightly warmer in light mode */
-  --success: #059669;
-  --success-glow: rgba(5, 150, 105, 0.1);
-  --warning: #d97706;
-  --warning-glow: rgba(217, 119, 6, 0.1);
-  --danger: #dc2626;
-  --danger-glow: rgba(220, 38, 38, 0.1);
+  /* Accent - slate teal as primary */
+  --accent: #5B7B8C;
+  --accent-hover: #4A6A7A;
+  --accent-glow: rgba(91, 123, 140, 0.12);
 
-  /* Glassmorphism - premium frosted effect */
-  --glass-bg: rgba(255, 255, 255, 0.85);
-  --glass-border: rgba(255, 255, 255, 0.6);
+  /* Secondary accent - violet for highlights */
+  --accent-secondary: #8B5BA5;
+  --accent-secondary-hover: #7A4A94;
+  --accent-secondary-glow: rgba(139, 91, 165, 0.12);
 
-  /* Card shadows with blue/purple haze */
-  --card-shadow: 0 1px 3px rgba(99, 102, 241, 0.06), 0 4px 12px rgba(99, 102, 241, 0.04);
-  --card-shadow-hover: 0 4px 12px rgba(99, 102, 241, 0.1), 0 8px 24px rgba(99, 102, 241, 0.06);
+  /* Tertiary accent - lavender for subtle effects */
+  --accent-tertiary: #D4A5D9;
+  --accent-tertiary-glow: rgba(212, 165, 217, 0.15);
 
-  /* Gradients */
-  --gradient-border: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
-  --gradient-glow: radial-gradient(ellipse at center, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+  /* Status - harmonized with palette */
+  --success: #5B9A7C;
+  --success-glow: rgba(91, 154, 124, 0.1);
+  --warning: #C4956B;
+  --warning-glow: rgba(196, 149, 107, 0.1);
+  --danger: #C46B6B;
+  --danger-glow: rgba(196, 107, 107, 0.1);
+
+  /* Glassmorphism - warm frosted effect */
+  --glass-bg: rgba(253, 252, 250, 0.9);
+  --glass-border: rgba(91, 123, 140, 0.1);
+
+  /* Card shadows with violet/teal haze */
+  --card-shadow: 0 1px 3px rgba(139, 91, 165, 0.04), 0 4px 12px rgba(91, 123, 140, 0.06);
+  --card-shadow-hover: 0 4px 12px rgba(139, 91, 165, 0.08), 0 8px 24px rgba(91, 123, 140, 0.08);
+
+  /* Gradients - lavender to violet */
+  --gradient-border: linear-gradient(135deg, rgba(212, 165, 217, 0.3), rgba(139, 91, 165, 0.3));
+  --gradient-glow: radial-gradient(ellipse at center, rgba(139, 91, 165, 0.06) 0%, transparent 70%);
 
   /* Theme toggle specific */
   --celestial-color: #fbbf24;
@@ -160,9 +196,138 @@ body::before {
   z-index: -1;
 }
 
+/* Lucas Blok inspired floating bands - light mode only */
+:root.light body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  /* Floating horizontal color bands at different positions - like the painting */
+  background:
+    /* Top lavender band - 15% from top */
+    linear-gradient(
+      90deg,
+      transparent 15%,
+      rgba(212, 165, 217, 0.06) 20%,
+      rgba(212, 165, 217, 0.08) 50%,
+      rgba(212, 165, 217, 0.06) 80%,
+      transparent 85%
+    ),
+    /* Upper slate-teal band - 35% from top */
+    linear-gradient(
+      90deg,
+      transparent 10%,
+      rgba(91, 123, 140, 0.05) 15%,
+      rgba(91, 123, 140, 0.07) 55%,
+      rgba(91, 123, 140, 0.05) 90%,
+      transparent 95%
+    ),
+    /* Middle violet band - 55% from top */
+    linear-gradient(
+      90deg,
+      transparent 20%,
+      rgba(139, 91, 165, 0.05) 25%,
+      rgba(139, 91, 165, 0.07) 60%,
+      rgba(139, 91, 165, 0.05) 75%,
+      transparent 80%
+    ),
+    /* Lower light-blue band - 75% from top */
+    linear-gradient(
+      90deg,
+      transparent 25%,
+      rgba(107, 163, 201, 0.04) 30%,
+      rgba(107, 163, 201, 0.06) 65%,
+      rgba(107, 163, 201, 0.04) 85%,
+      transparent 90%
+    );
+  background-size:
+    100% 80px,
+    100% 100px,
+    100% 70px,
+    100% 90px;
+  background-position:
+    0 12%,
+    0 38%,
+    0 58%,
+    0 78%;
+  background-repeat: no-repeat;
+  filter: blur(40px);
+}
+
+/* Dark mode floating bands - more subtle */
+:root.dark body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 15%,
+      rgba(212, 165, 217, 0.03) 20%,
+      rgba(212, 165, 217, 0.04) 50%,
+      rgba(212, 165, 217, 0.03) 80%,
+      transparent 85%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 10%,
+      rgba(91, 123, 140, 0.025) 15%,
+      rgba(91, 123, 140, 0.035) 55%,
+      rgba(91, 123, 140, 0.025) 90%,
+      transparent 95%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 20%,
+      rgba(139, 91, 165, 0.03) 25%,
+      rgba(139, 91, 165, 0.04) 60%,
+      rgba(139, 91, 165, 0.03) 75%,
+      transparent 80%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 25%,
+      rgba(107, 163, 201, 0.02) 30%,
+      rgba(107, 163, 201, 0.03) 65%,
+      rgba(107, 163, 201, 0.02) 85%,
+      transparent 90%
+    );
+  background-size:
+    100% 80px,
+    100% 100px,
+    100% 70px,
+    100% 90px;
+  background-position:
+    0 12%,
+    0 38%,
+    0 58%,
+    0 78%;
+  background-repeat: no-repeat;
+  filter: blur(50px);
+}
+
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* Lucas Blok link styling */
+a.link,
+.text-link,
+p a,
+.card a:not(.btn) {
+  color: var(--blok-slate-teal);
+  transition: color 0.2s ease;
+}
+
+a.link:hover,
+.text-link:hover,
+p a:hover,
+.card a:not(.btn):hover {
+  color: var(--blok-violet);
 }
 
 button {
@@ -239,7 +404,45 @@ button {
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.03);
+  box-shadow: 0 1px 3px rgba(91, 123, 140, 0.03);
+}
+
+/* Lucas Blok inspired decorative header strip - light mode */
+:root.light .nav::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    rgba(212, 165, 217, 0.6) 0%,
+    rgba(181, 224, 240, 0.5) 25%,
+    rgba(91, 123, 140, 0.5) 50%,
+    rgba(107, 163, 201, 0.5) 75%,
+    rgba(139, 91, 165, 0.6) 100%
+  );
+  opacity: 0.4;
+}
+
+/* Dark mode header strip - more subtle */
+:root.dark .nav::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(212, 165, 217, 0.3) 0%,
+    rgba(181, 224, 240, 0.25) 25%,
+    rgba(91, 123, 140, 0.25) 50%,
+    rgba(107, 163, 201, 0.25) 75%,
+    rgba(139, 91, 165, 0.3) 100%
+  );
+  opacity: 0.5;
 }
 
 .nav-content {
@@ -270,16 +473,39 @@ button {
   font-weight: 500;
   color: var(--text-secondary);
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .nav-link:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: rgba(212, 165, 217, 0.1);
+  color: var(--blok-violet);
 }
 
 .nav-link.active {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: linear-gradient(135deg, rgba(91, 123, 140, 0.15) 0%, rgba(139, 91, 165, 0.15) 100%);
+  color: var(--blok-violet);
+}
+
+/* Active indicator line */
+.nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--blok-slate-teal), var(--blok-violet));
+  border-radius: 2px;
+}
+
+/* Light mode nav adjustments */
+:root.light .nav-link:hover {
+  background: rgba(212, 165, 217, 0.15);
+}
+
+:root.light .nav-link.active {
+  background: linear-gradient(135deg, rgba(91, 123, 140, 0.12) 0%, rgba(139, 91, 165, 0.12) 100%);
 }
 
 .nav-badge {
@@ -329,13 +555,32 @@ button {
 }
 
 .stat-card:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-2px);
-  box-shadow: var(--card-shadow-hover);
+  border-color: var(--blok-lavender);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow:
+    var(--card-shadow-hover),
+    0 0 25px rgba(139, 91, 165, 0.25);
 }
 
 .stat-card:hover::before {
   opacity: 1;
+}
+
+/* Alternating glow colors for stat cards */
+.stat-card:nth-child(1):hover {
+  box-shadow: var(--card-shadow-hover), 0 0 25px rgba(139, 91, 165, 0.3);
+}
+
+.stat-card:nth-child(2):hover {
+  box-shadow: var(--card-shadow-hover), 0 0 25px rgba(91, 123, 140, 0.3);
+}
+
+.stat-card:nth-child(3):hover {
+  box-shadow: var(--card-shadow-hover), 0 0 25px rgba(212, 165, 217, 0.35);
+}
+
+.stat-card:nth-child(4):hover {
+  box-shadow: var(--card-shadow-hover), 0 0 25px rgba(107, 163, 201, 0.3);
 }
 
 .stat-card h3 {
@@ -371,6 +616,59 @@ button {
 
 .stat-card .trend.down {
   color: var(--danger);
+}
+
+/* Lucas Blok left border accents for stat cards - alternating colors */
+.stat-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+  transition: opacity 0.2s ease, width 0.2s ease;
+}
+
+/* Card 1: Total Deals - Teal */
+.stat-card:nth-child(1)::after {
+  background: var(--blok-slate-teal);
+  opacity: 0.7;
+}
+
+/* Card 2: Lead - Lavender */
+.stat-card:nth-child(2)::after {
+  background: var(--blok-lavender);
+  opacity: 0.8;
+}
+
+/* Card 3: Discovery - Blue */
+.stat-card:nth-child(3)::after {
+  background: var(--blok-medium-blue);
+  opacity: 0.7;
+}
+
+/* Card 4: Negotiation - Teal */
+.stat-card:nth-child(4)::after {
+  background: var(--blok-slate-teal);
+  opacity: 0.7;
+}
+
+/* Card 5: Closed Won - Violet */
+.stat-card:nth-child(5)::after {
+  background: var(--blok-violet);
+  opacity: 0.8;
+}
+
+/* Card 6+ fallback - Violet */
+.stat-card:nth-child(n+6)::after {
+  background: var(--blok-violet);
+  opacity: 0.7;
+}
+
+.stat-card:hover::after {
+  opacity: 1;
+  width: 4px;
 }
 
 /* Sparkline container */
@@ -571,19 +869,31 @@ tr:hover td {
   font-weight: 500;
 }
 
-.stage-pill.lead { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
-.stage-pill.discovery { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
-.stage-pill.evaluation { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
-.stage-pill.negotiation { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-.stage-pill.closed-won { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+/* Lucas Blok painting colors for stages */
+.stage-pill.lead { background: rgba(212, 165, 217, 0.2); color: var(--blok-lavender); }
+.stage-pill.discovery { background: rgba(107, 163, 201, 0.2); color: var(--blok-medium-blue); }
+.stage-pill.evaluation { background: rgba(181, 224, 240, 0.25); color: #5BA3C9; }
+.stage-pill.negotiation { background: rgba(91, 123, 140, 0.2); color: var(--blok-slate-teal); }
+.stage-pill.closed-won { background: rgba(139, 91, 165, 0.2); color: var(--blok-violet); }
 .stage-pill.closed-lost { background: rgba(239, 68, 68, 0.15); color: #f87171; }
-.stage-pill.qualified { background: rgba(6, 182, 212, 0.15); color: #22d3ee; }
-.stage-pill.proposal { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-.stage-pill.closed { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+.stage-pill.qualified { background: rgba(107, 163, 201, 0.2); color: var(--blok-medium-blue); }
+.stage-pill.proposal { background: rgba(91, 123, 140, 0.2); color: var(--blok-slate-teal); }
+.stage-pill.closed { background: rgba(139, 91, 165, 0.2); color: var(--blok-violet); }
 .stage-pill.lost { background: rgba(239, 68, 68, 0.15); color: #f87171; }
 /* Underscore format from database */
-.stage-pill.closed_won { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+.stage-pill.closed_won { background: rgba(139, 91, 165, 0.2); color: var(--blok-violet); }
 .stage-pill.closed_lost { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+/* Light mode stage pills - bolder colors */
+:root.light .stage-pill.lead { background: rgba(212, 165, 217, 0.25); color: #B87DBD; }
+:root.light .stage-pill.discovery { background: rgba(107, 163, 201, 0.25); color: #4A8AB5; }
+:root.light .stage-pill.evaluation { background: rgba(181, 224, 240, 0.35); color: #4A8AB5; }
+:root.light .stage-pill.negotiation { background: rgba(91, 123, 140, 0.2); color: #4A6A7A; }
+:root.light .stage-pill.closed-won,
+:root.light .stage-pill.closed_won,
+:root.light .stage-pill.closed { background: rgba(139, 91, 165, 0.2); color: #7A4A94; }
+:root.light .stage-pill.qualified { background: rgba(107, 163, 201, 0.25); color: #4A8AB5; }
+:root.light .stage-pill.proposal { background: rgba(91, 123, 140, 0.2); color: #4A6A7A; }
 
 /* ============================================
    FILTER BAR
@@ -630,10 +940,44 @@ tr:hover td {
   padding: 24px;
   box-shadow: var(--card-shadow);
   transition: box-shadow 0.2s ease, transform 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .card:hover {
   box-shadow: var(--card-shadow-hover);
+}
+
+/* Lucas Blok inspired gradient left accent for cards */
+.card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(
+    180deg,
+    var(--blok-lavender) 0%,
+    var(--blok-violet) 50%,
+    var(--blok-slate-teal) 100%
+  );
+  opacity: 0.7;
+  transition: opacity 0.2s ease, width 0.2s ease;
+}
+
+.card:hover::before {
+  opacity: 1;
+  width: 5px;
+}
+
+/* Dark mode: slightly more transparent */
+:root.dark .card::before {
+  opacity: 0.5;
+}
+
+:root.dark .card:hover::before {
+  opacity: 0.8;
 }
 
 .card h2 {
@@ -1318,9 +1662,17 @@ tr:hover td {
 
 .task-list-container {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-color);
   border-radius: 16px;
   overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+
+/* Light mode: softer container */
+:root.light .task-list-container {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 /* Section */
@@ -1341,15 +1693,25 @@ tr:hover td {
   background: var(--bg-tertiary);
   border: none;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   text-align: left;
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
+/* Light mode: softer section headers */
+:root.light .section-header {
+  background: rgba(91, 123, 140, 0.03);
+  color: #1a2744;
+}
+
 .section-header:hover {
   background: var(--bg-hover);
+}
+
+:root.light .section-header:hover {
+  background: rgba(91, 123, 140, 0.06);
 }
 
 .section-chevron {
@@ -1401,7 +1763,12 @@ tr:hover td {
 }
 
 .task-row:hover {
-  background: var(--bg-hover);
+  background: rgba(212, 165, 217, 0.08);
+}
+
+/* Light mode: lavender hover */
+:root.light .task-row:hover {
+  background: rgba(212, 165, 217, 0.15);
 }
 
 .task-row.completed {
@@ -1847,7 +2214,7 @@ tr:hover td {
   font-weight: 500;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .btn:disabled {
@@ -1855,25 +2222,48 @@ tr:hover td {
   cursor: not-allowed;
 }
 
+/* Primary button - Lucas Blok gradient: slate teal to violet */
 .btn-primary {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--blok-slate-teal) 0%, var(--blok-violet) 100%);
   color: white;
   border: none;
+  box-shadow: 0 2px 8px rgba(139, 91, 165, 0.25);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #2563eb;
+  background: linear-gradient(135deg, var(--blok-violet) 0%, var(--blok-slate-teal) 100%);
+  box-shadow: 0 4px 16px rgba(139, 91, 165, 0.35);
+  transform: translateY(-1px);
 }
 
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(139, 91, 165, 0.25);
+}
+
+/* Secondary button - lavender border */
 .btn-secondary {
   background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
+  color: var(--blok-slate-teal);
+  border: 1px solid var(--blok-lavender);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--bg-hover);
-  border-color: var(--border-color);
+  background: rgba(212, 165, 217, 0.15);
+  border-color: var(--blok-violet);
+  color: var(--blok-violet);
+}
+
+/* Dark mode secondary button adjustment */
+:root.dark .btn-secondary {
+  color: var(--blok-lavender);
+  border-color: rgba(212, 165, 217, 0.4);
+}
+
+:root.dark .btn-secondary:hover:not(:disabled) {
+  background: rgba(212, 165, 217, 0.1);
+  border-color: var(--blok-lavender);
+  color: var(--blok-lavender);
 }
 
 .btn-danger {
@@ -1894,16 +2284,28 @@ tr:hover td {
   height: 32px;
   padding: 0;
   background: transparent;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--blok-lavender);
   border-radius: 8px;
-  color: var(--text-secondary);
+  color: var(--blok-slate-teal);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
+}
+
+:root.dark .btn-icon {
+  border-color: rgba(212, 165, 217, 0.3);
+  color: var(--blok-lavender);
 }
 
 .btn-icon:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-color);
+  background: rgba(212, 165, 217, 0.1);
+  border-color: var(--blok-violet);
+  color: var(--blok-violet);
+}
+
+:root.dark .btn-icon:hover {
+  background: rgba(212, 165, 217, 0.1);
+  border-color: var(--blok-lavender);
+  color: var(--blok-lavender);
 }
 
 .btn-icon.danger:hover {
@@ -2578,11 +2980,19 @@ tr:hover td {
   min-width: 280px;
   max-width: 320px;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-color);
   border-radius: 16px;
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 220px);
+  box-shadow: var(--card-shadow);
+}
+
+/* Light mode: softer column styling */
+:root.light .board-column {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .column-header {
@@ -2594,6 +3004,12 @@ tr:hover td {
   border-top: 3px solid var(--text-muted);
   border-radius: 16px 16px 0 0;
   background: var(--bg-tertiary);
+}
+
+/* Light mode: subtle indigo tint on column headers */
+:root.light .column-header {
+  background: rgba(91, 123, 140, 0.04);
+  border-bottom: 1px solid rgba(91, 123, 140, 0.08);
 }
 
 .column-title {
@@ -2636,18 +3052,30 @@ tr:hover td {
 /* Board Cards */
 .board-card {
   background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 14px 16px;
   cursor: grab;
   transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--card-shadow);
+}
+
+/* Light mode: soft glass card effect */
+:root.light .board-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(91, 123, 140, 0.1);
 }
 
 .board-card:hover {
   border-color: var(--border-strong);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--card-shadow-hover);
   transform: translateY(-2px);
+}
+
+:root.light .board-card:hover {
+  border-color: rgba(91, 123, 140, 0.2);
 }
 
 .board-card.dragging {
@@ -2655,6 +3083,10 @@ tr:hover td {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   transform: rotate(2deg) scale(1.02);
   border-color: var(--accent);
+}
+
+:root.light .board-card.dragging {
+  box-shadow: 0 12px 32px rgba(91, 123, 140, 0.2);
 }
 
 .board-card.overdue {
@@ -2774,6 +3206,11 @@ tr:hover td {
   color: white;
 }
 
+/* Light mode: softer assignee badges */
+:root.light .card-assignee {
+  background: linear-gradient(135deg, rgba(212, 165, 217, 0.85), rgba(139, 91, 165, 0.9));
+}
+
 /* ============================================
    DEAL LIST TABLE
    ============================================ */
@@ -2838,12 +3275,12 @@ tr:hover td {
 }
 
 .deal-row:hover {
-  background: var(--bg-hover);
+  background: rgba(212, 165, 217, 0.08);
 }
 
-/* Light mode: subtle indigo tint on hover */
+/* Light mode: lavender hover */
 :root.light .deal-row:hover {
-  background: rgba(99, 102, 241, 0.04);
+  background: rgba(212, 165, 217, 0.15);
 }
 
 .deal-row td {
@@ -3030,6 +3467,16 @@ tr:hover td {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Lucas Blok violet accent for sidebar cards */
+.dashboard-sidebar .card::before {
+  background: var(--blok-violet);
+  opacity: 0.8;
+}
+
+.dashboard-sidebar .card:hover::before {
+  opacity: 1;
 }
 
 /* Stats Grid Compact */

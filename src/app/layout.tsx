@@ -4,6 +4,7 @@ import { Nav } from '@/components/Nav'
 import { CommandPalette } from '@/components/CommandPalette'
 import { ToastProvider } from '@/components/Toast'
 import { ThemeProvider } from '@/components/ThemeProvider'
+import { Footer } from '@/components/Footer'
 import AmbientPlayer from '@/components/AmbientPlayer'
 
 export const metadata: Metadata = {
@@ -46,6 +47,7 @@ export default function RootLayout({
             </main>
             <CommandPalette />
             <AmbientPlayer />
+            <Footer />
           </ToastProvider>
         </ThemeProvider>
       </body>
