@@ -1035,21 +1035,33 @@ tr:hover td {
 
 .message.assistant {
   align-self: flex-start;
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-bottom-left-radius: 6px;
 }
 
+/* Light mode assistant message */
+:root.light .message.assistant {
+  background: rgba(241, 245, 249, 0.8);
+  color: #334155;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
 .message pre {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.2);
   padding: 14px;
   border-radius: 10px;
   overflow-x: auto;
   margin: 10px 0;
   border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+:root.light .message pre {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 .chat-input-container {
@@ -1071,7 +1083,13 @@ tr:hover td {
   color: var(--text-primary);
   font-size: 15px;
   outline: none;
-  transition: all 0.25s ease;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  resize: none;
+  min-height: 52px;
+  max-height: 200px;
+  line-height: 1.4;
+  font-family: inherit;
+  overflow-y: auto;
 }
 
 .chat-input:focus {
@@ -1106,6 +1124,63 @@ tr:hover td {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Tool indicator pill */
+.tool-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin-top: 12px;
+  background: rgba(139, 91, 165, 0.15);
+  border: 1px solid rgba(139, 91, 165, 0.3);
+  border-radius: 20px;
+  font-size: 13px;
+  color: var(--accent-secondary);
+  animation: toolFadeIn 0.2s ease;
+}
+
+@keyframes toolFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tool-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(139, 91, 165, 0.3);
+  border-top-color: var(--accent-secondary);
+  border-radius: 50%;
+  animation: toolSpin 0.8s linear infinite;
+}
+
+@keyframes toolSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tool-name {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* Light mode tool indicator */
+:root.light .tool-indicator {
+  background: rgba(139, 91, 165, 0.1);
+  border-color: rgba(139, 91, 165, 0.25);
+}
+
+:root.light .tool-spinner {
+  border-color: rgba(139, 91, 165, 0.2);
+  border-top-color: var(--accent-secondary);
 }
 
 /* Chat page layout with sidebar */
@@ -1697,6 +1772,24 @@ tr:hover td {
   font-size: 13px;
   color: var(--text-secondary);
   margin-top: 2px;
+}
+
+.toast-action {
+  padding: 6px 12px;
+  margin-right: 8px;
+  background: var(--accent-secondary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toast-action:hover {
+  background: var(--accent-secondary-hover);
+  transform: translateY(-1px);
 }
 
 .toast-close {

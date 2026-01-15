@@ -289,6 +289,44 @@ const tools: Anthropic.Tool[] = [
       properties: {},
       required: []
     }
+  },
+  {
+    name: 'delete_deals_by_company_names',
+    description: 'Delete multiple deals by their EXACT company names in ONE database call. Use this when Nick lists exact company names to delete.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        companies: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of exact company names to delete (case-insensitive but exact match)'
+        },
+        confirmed: {
+          type: 'boolean',
+          description: 'Must be true to confirm deletion. First call without confirmed to preview, then with confirmed=true to delete.'
+        }
+      },
+      required: ['companies']
+    }
+  },
+  {
+    name: 'search_and_delete_deals',
+    description: 'FUZZY search and delete deals. Use this when Nick gives partial/abbreviated company names (e.g., "arkstream" matches "Arkstream Capital"). Preferred over delete_deals_by_company_names for most cases.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        search_terms: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of search terms - will match any company containing these terms'
+        },
+        confirm: {
+          type: 'boolean',
+          description: 'Must be true to confirm deletion. First call without confirm to preview matches, then with confirm=true to delete.'
+        }
+      },
+      required: ['search_terms']
+    }
   }
 ]
 
@@ -762,6 +800,50 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         return analysis
       }
 
+      case 'delete_deals_by_company_names': {
+        const { companies, confirmed } = input as { companies: string[]; confirmed?: boolean }
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/delete-by-companies`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ companies, confirmed }),
+        })
+
+        const result = await response.json()
+        if (result.error) return `Error: ${result.error}`
+
+        if (result.preview) {
+          return `Found ${result.count} deal(s) to delete:\n${result.companies.map((c: string) => `- ${c}`).join('\n')}\n\nPlease confirm deletion.`
+        }
+
+        return `Successfully deleted ${result.deleted} deal(s):\n${result.companies.map((c: string) => `- ${c}`).join('\n')}`
+      }
+
+      case 'search_and_delete_deals': {
+        const { search_terms, confirm } = input as { search_terms: string[]; confirm?: boolean }
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/search-and-delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ search_terms, confirm }),
+        })
+
+        const result = await response.json()
+        if (result.error) return `Error: ${result.error}`
+
+        if (result.preview) {
+          // Format by search term for clarity
+          let output = `Found ${result.count} deal(s) matching your search:\n\n`
+          for (const [term, companies] of Object.entries(result.byTerm || {})) {
+            output += `**"${term}"** → ${(companies as string[]).join(', ')}\n`
+          }
+          output += `\nConfirm to delete these ${result.count} deals.`
+          return output
+        }
+
+        return `Successfully deleted ${result.deleted} deal(s):\n${result.companies.map((c: string) => `- ${c}`).join('\n')}`
+      }
+
       default:
         return `Unknown tool: ${name}`
     }
@@ -938,7 +1020,26 @@ export async function POST(request: NextRequest) {
           controller.close()
         } catch (error) {
           console.error('Streaming error:', error)
-          controller.enqueue(encoder.encode('\n\nError: Failed to process request.'))
+
+          // Extract meaningful error message
+          let errorMessage = 'Failed to process request.'
+          if (error instanceof Error) {
+            // Check for common API errors
+            if (error.message.includes('credit balance')) {
+              errorMessage = 'API credit balance is too low. Please check your Anthropic account.'
+            } else if (error.message.includes('rate_limit') || error.message.includes('rate limit')) {
+              errorMessage = 'Rate limit exceeded. Please wait a moment and try again.'
+            } else if (error.message.includes('authentication') || error.message.includes('API key')) {
+              errorMessage = 'API authentication failed. Check your API key.'
+            } else if (error.message.includes('timeout')) {
+              errorMessage = 'Request timed out. Please try again.'
+            } else {
+              // Include the actual error for debugging
+              errorMessage = `Error: ${error.message}`
+            }
+          }
+
+          controller.enqueue(encoder.encode(`\n\n⚠️ ${errorMessage}`))
           controller.close()
         }
       },

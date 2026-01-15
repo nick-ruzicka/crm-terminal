@@ -11,6 +11,7 @@ export async function GET() {
     const { data: sessions, error } = await supabase
       .from('chat_sessions')
       .select('*')
+      .is('deleted_at', null)
       .order('updated_at', { ascending: false })
 
     if (error) {

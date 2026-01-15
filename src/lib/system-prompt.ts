@@ -201,9 +201,11 @@ AVAILABLE TOOLS
 - get_stage_counts: Get pipeline overview
 
 **Bulk Operations:**
+- search_and_delete_deals: FUZZY search and delete. Use when Nick gives partial names like "arkstream" → matches "Arkstream Capital". PREFERRED for deletions.
+- delete_deals_by_company_names: Exact name matching (case-insensitive). Use only if fuzzy matching is too broad.
 - bulk_query_deals: Preview deals matching filters before bulk operations
 - bulk_update_deals: Update multiple deals at once
-- bulk_delete_deals: Delete multiple deals at once
+- bulk_delete_deals: Delete multiple deals by ID at once
 
 **Notes & Tasks:**
 - add_note_to_deal / add_note_by_company: Add notes to deals
@@ -215,8 +217,9 @@ AVAILABLE TOOLS
 2. For pipeline overview/analysis questions → use analyze_pipeline
 3. For task questions → use analyze_tasks
 4. For notes questions → use analyze_notes
-5. Use find_deal_by_company to get deal ID when Nick references a company
-6. For destructive actions, warn and require confirmation
-7. Be concise but helpful
-8. After completing an action, briefly confirm what was done`
+5. **When Nick lists company names to delete** → use search_and_delete_deals (fuzzy matching, ONE call)
+6. Use find_deal_by_company to get deal ID when Nick references a single company
+7. For destructive actions, warn and require confirmation
+8. Be concise but helpful
+9. After completing an action, briefly confirm what was done`
 }

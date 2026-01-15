@@ -4,17 +4,24 @@ import { createContext, useContext, useState, useCallback, ReactNode } from 'rea
 
 type ToastType = 'success' | 'error' | 'warning' | 'info'
 
+interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
 interface Toast {
   id: string
   type: ToastType
   title: string
   message?: string
+  action?: ToastAction
+  duration?: number
   exiting?: boolean
 }
 
 interface ToastContextValue {
   toasts: Toast[]
-  addToast: (type: ToastType, title: string, message?: string) => void
+  addToast: (type: ToastType, title: string, message?: string, options?: { action?: ToastAction; duration?: number }) => void
   removeToast: (id: string) => void
 }
 
@@ -35,19 +42,25 @@ interface ToastProviderProps {
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<Toast[]>([])
 
-  const addToast = useCallback((type: ToastType, title: string, message?: string) => {
+  const addToast = useCallback((
+    type: ToastType,
+    title: string,
+    message?: string,
+    options?: { action?: ToastAction; duration?: number }
+  ) => {
     const id = Math.random().toString(36).slice(2)
-    const toast: Toast = { id, type, title, message }
+    const duration = options?.duration ?? 4000
+    const toast: Toast = { id, type, title, message, action: options?.action, duration }
 
     setToasts(prev => [...prev, toast])
 
-    // Auto-remove after 4 seconds
+    // Auto-remove after duration
     setTimeout(() => {
       setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t))
       setTimeout(() => {
         setToasts(prev => prev.filter(t => t.id !== id))
       }, 300)
-    }, 4000)
+    }, duration)
   }, [])
 
   const removeToast = useCallback((id: string) => {
@@ -88,6 +101,13 @@ interface ToastItemProps {
 }
 
 function ToastItem({ toast, onRemove }: ToastItemProps) {
+  const handleAction = () => {
+    if (toast.action) {
+      toast.action.onClick()
+      onRemove(toast.id)
+    }
+  }
+
   return (
     <div className={`toast ${toast.exiting ? 'exiting' : ''}`}>
       <ToastIcon type={toast.type} />
@@ -95,6 +115,11 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
         <div className="toast-title">{toast.title}</div>
         {toast.message && <div className="toast-message">{toast.message}</div>}
       </div>
+      {toast.action && (
+        <button className="toast-action" onClick={handleAction}>
+          {toast.action.label}
+        </button>
+      )}
       <button className="toast-close" onClick={() => onRemove(toast.id)}>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M3 3l8 8M11 3l-8 8" />

@@ -2,11 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { useToast } from '@/components/Toast'
 
 interface Message {
   id?: string
   role: 'user' | 'assistant'
   content: string
+  activeTool?: string | null
 }
 
 interface ChatSession {
@@ -25,6 +27,8 @@ export default function ChatPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isLoadingSessions, setIsLoadingSessions] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { addToast } = useToast()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -109,6 +113,7 @@ export default function ChatPage() {
     const newMessages = [...messages, userMessage]
     setMessages(newMessages)
     setInput('')
+    resetTextareaHeight()
     setIsLoading(true)
 
     let sessionId = currentSessionId
@@ -146,6 +151,27 @@ export default function ChatPage() {
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let accumulatedContent = ''
+      let activeTool: string | null = null
+
+      // Tool name mapping for friendly display
+      const toolDisplayNames: Record<string, string> = {
+        check_pipeline_health: 'Checking pipeline health',
+        analyze_pipeline: 'Analyzing pipeline',
+        analyze_tasks: 'Analyzing tasks',
+        analyze_notes: 'Analyzing notes',
+        find_deal_by_company: 'Searching deals',
+        bulk_query_deals: 'Querying deals',
+        bulk_delete_deals: 'Deleting deals',
+        bulk_update_deals: 'Updating deals',
+        create_deal: 'Creating deal',
+        update_deal_stage: 'Updating stage',
+        delete_deal: 'Deleting deal',
+        search_notes: 'Searching notes',
+        create_task: 'Creating task',
+        complete_task: 'Completing task',
+        get_deals_by_stage: 'Getting deals',
+        get_stage_counts: 'Counting deals',
+      }
 
       if (reader) {
         while (true) {
@@ -155,19 +181,39 @@ export default function ChatPage() {
           const chunk = decoder.decode(value, { stream: true })
           accumulatedContent += chunk
 
-          // Update the assistant message with accumulated content
+          // Check for tool indicators in the accumulated content
+          const toolMatch = accumulatedContent.match(/\[Using (\w+)\.\.\.\]\n?/)
+          if (toolMatch) {
+            activeTool = toolDisplayNames[toolMatch[1]] || toolMatch[1].replace(/_/g, ' ')
+          }
+
+          // Check if tool completed (new content after tool indicator)
+          if (activeTool) {
+            const afterTool = accumulatedContent.split(/\[Using \w+\.\.\.\]\n?/).pop() || ''
+            // If we have substantial content after the tool indicator, tool is done
+            if (afterTool.length > 50) {
+              activeTool = null
+            }
+          }
+
+          // Remove tool indicators from displayed content
+          const cleanContent = accumulatedContent.replace(/\[Using \w+\.\.\.\]\n?/g, '')
+
+          // Update the assistant message with clean content and active tool
           setMessages(prev => {
             const updated = [...prev]
             updated[assistantMessageIndex] = {
               role: 'assistant',
-              content: accumulatedContent,
+              content: cleanContent,
+              activeTool,
             }
             return updated
           })
         }
       }
 
-      const finalContent = accumulatedContent || 'Action completed.'
+      // Final cleanup - remove tool indicators
+      const finalContent = (accumulatedContent || 'Action completed.').replace(/\[Using \w+\.\.\.\]\n?/g, '')
 
       // Save assistant message
       if (sessionId) {
@@ -199,23 +245,72 @@ export default function ChatPage() {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       sendMessage()
     }
   }
 
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px'
+    }
+    setInput(e.target.value)
+  }
+
+  const resetTextareaHeight = () => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+    }
+  }
+
   const deleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     try {
-      await fetch(`/api/chat/sessions/${sessionId}`, { method: 'DELETE' })
-      setSessions(prev => prev.filter(s => s.id !== sessionId))
-      if (currentSessionId === sessionId) {
-        startNewChat()
+      // Store the session before removing for potential undo
+      const deletedSession = sessions.find(s => s.id === sessionId)
+
+      const response = await fetch(`/api/chat/sessions/${sessionId}`, { method: 'DELETE' })
+      const result = await response.json()
+
+      if (result.success) {
+        setSessions(prev => prev.filter(s => s.id !== sessionId))
+        if (currentSessionId === sessionId) {
+          startNewChat()
+        }
+
+        // Show toast with undo action
+        addToast('info', 'Chat deleted', undefined, {
+          duration: 5000,
+          action: {
+            label: 'Undo',
+            onClick: async () => {
+              try {
+                const restoreResponse = await fetch(`/api/chat/sessions/${sessionId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ restore: true }),
+                })
+                const restoreResult = await restoreResponse.json()
+
+                if (restoreResult.restored && deletedSession) {
+                  setSessions(prev => [deletedSession, ...prev])
+                  addToast('success', 'Chat restored')
+                }
+              } catch {
+                addToast('error', 'Failed to restore chat')
+              }
+            }
+          }
+        })
       }
     } catch (error) {
       console.error('Failed to delete session:', error)
+      addToast('error', 'Failed to delete chat')
     }
   }
 
@@ -321,6 +416,12 @@ export default function ChatPage() {
                   {message.role === 'assistant' ? (
                     <div className="markdown-content">
                       <ReactMarkdown>{message.content}</ReactMarkdown>
+                      {message.activeTool && (
+                        <div className="tool-indicator">
+                          <span className="tool-spinner" />
+                          <span className="tool-name">{message.activeTool}</span>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     message.content
@@ -332,14 +433,15 @@ export default function ChatPage() {
           </div>
 
           <div className="chat-input-container">
-            <input
-              type="text"
+            <textarea
+              ref={textareaRef}
               className="chat-input"
               placeholder="Ask about your deals..."
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
               disabled={isLoading}
+              rows={1}
             />
             <button
               className="send-btn"
