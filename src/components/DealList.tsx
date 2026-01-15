@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import type { Deal } from '@/types/database'
+import { formatStageName, getDealDueDateStatus, formatDealDueDate } from '@/lib/dateUtils'
+import { STAGE_ORDER } from '@/constants/stages'
 
 interface DealListProps {
   deals: Deal[]
@@ -11,50 +13,6 @@ interface DealListProps {
 
 type SortKey = 'company' | 'stage' | 'deal_type' | 'next_step' | 'next_step_due'
 type SortDir = 'asc' | 'desc'
-
-const STAGE_ORDER = ['lead', 'discovery', 'evaluation', 'negotiation', 'closed_won', 'closed_lost']
-
-const STAGE_LABELS: Record<string, string> = {
-  lead: 'Lead',
-  discovery: 'Discovery',
-  evaluation: 'Evaluation',
-  negotiation: 'Negotiation',
-  closed_won: 'Closed Won',
-  closed_lost: 'Closed Lost',
-}
-
-function formatStageName(stage: string | null): string {
-  if (!stage) return 'Unknown'
-  return STAGE_LABELS[stage] || stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
-
-function getDueDateStatus(dueDate: string | null): 'overdue' | 'soon' | 'normal' {
-  if (!dueDate) return 'normal'
-
-  const due = new Date(dueDate)
-  due.setHours(0, 0, 0, 0)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-
-  if (diffDays < 0) return 'overdue'
-  if (diffDays <= 3) return 'soon'
-  return 'normal'
-}
-
-function formatDueDate(dueDate: string | null): string {
-  if (!dueDate) return '—'
-  const date = new Date(dueDate)
-  const today = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  if (date.toDateString() === today.toDateString()) return 'Today'
-  if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
 
 export function DealList({ deals, stages, onDealClick }: DealListProps) {
   const [selectedStage, setSelectedStage] = useState<string | null>(null)
@@ -167,7 +125,7 @@ export function DealList({ deals, stages, onDealClick }: DealListProps) {
             </thead>
             <tbody>
               {sortedDeals.map(deal => {
-                const dueStatus = getDueDateStatus(deal.next_step_due)
+                const dueStatus = getDealDueDateStatus(deal.next_step_due)
                 return (
                   <tr
                     key={deal.id}
@@ -195,7 +153,7 @@ export function DealList({ deals, stages, onDealClick }: DealListProps) {
                     </td>
                     <td>
                       <span className={`due-date ${dueStatus}`}>
-                        {formatDueDate(deal.next_step_due)}
+                        {formatDealDueDate(deal.next_step_due)}
                       </span>
                     </td>
                   </tr>

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import type { AsanaTask, GroupedTasks } from '@/lib/asana'
 import { TaskDetailModal } from './TaskDetailModal'
+import { getTaskDueDateStatus, formatDueDate, formatLastUpdated } from '@/lib/dateUtils'
 
 const SECTION_COLORS: Record<string, string> = {
   'To Do': '#6b7280',
@@ -18,35 +19,6 @@ const REFRESH_INTERVAL = 30000
 
 interface TaskBoardProps {
   initialData: GroupedTasks[]
-}
-
-function getDueDateStatus(dueOn: string | null, completed: boolean): 'overdue' | 'today' | 'week' | 'normal' {
-  if (!dueOn || completed) return 'normal'
-
-  const due = new Date(dueOn)
-  due.setHours(0, 0, 0, 0)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-
-  if (diffDays < 0) return 'overdue'
-  if (diffDays === 0) return 'today'
-  if (diffDays <= 7) return 'week'
-  return 'normal'
-}
-
-function formatDueDate(dueOn: string | null): string {
-  if (!dueOn) return ''
-  const date = new Date(dueOn)
-  const today = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  if (date.toDateString() === today.toDateString()) return 'Today'
-  if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function getInitials(name: string): string {
@@ -65,7 +37,7 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, index, onClick }: TaskCardProps) {
-  const dueStatus = getDueDateStatus(task.due_on, task.completed)
+  const dueStatus = getTaskDueDateStatus(task.due_on, task.completed)
   const hasSubtasks = (task.num_subtasks || 0) > 0
 
   return (
@@ -140,15 +112,6 @@ function SectionColumn({ section, tasks, onTaskClick }: SectionColumnProps) {
       </Droppable>
     </div>
   )
-}
-
-function formatLastUpdated(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000)
-  if (seconds < 5) return 'Just now'
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes === 1) return '1 min ago'
-  return `${minutes} mins ago`
 }
 
 export function TaskBoard({ initialData }: TaskBoardProps) {

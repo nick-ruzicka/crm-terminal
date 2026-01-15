@@ -1,7 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
+
+export const dynamic = 'force-dynamic'
+
+export async function GET() {
+  try {
+    const supabase = getSupabase()
+
+    const { data: deals, error } = await supabase
+      .from('deals')
+      .select('id, name, company, stage')
+      .order('company', { ascending: true })
+
+    if (error) {
+      console.error('GET /api/deals - Error:', error)
+      return NextResponse.json({ error: 'Failed to fetch deals' }, { status: 500 })
+    }
+
+    return NextResponse.json({ deals: deals || [] })
+  } catch (error) {
+    console.error('GET /api/deals - Catch error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
 
 export async function POST(request: NextRequest) {
+  const supabase = getSupabase()
   try {
     const body = await request.json()
     console.log('POST /api/deals - Request body:', JSON.stringify(body, null, 2))

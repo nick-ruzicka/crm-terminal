@@ -4,6 +4,7 @@ import { Nav } from '@/components/Nav'
 import { CommandPalette } from '@/components/CommandPalette'
 import { ToastProvider } from '@/components/Toast'
 import { ThemeProvider } from '@/components/ThemeProvider'
+import { ReviewCountProvider } from '@/components/ReviewCountContext'
 import { Footer } from '@/components/Footer'
 import AmbientPlayer from '@/components/AmbientPlayer'
 
@@ -41,13 +42,15 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <ToastProvider>
-            <Nav />
-            <main className="container">
-              {children}
-            </main>
-            <CommandPalette />
-            <AmbientPlayer />
-            <Footer />
+            <ReviewCountProvider>
+              <Nav />
+              <main className="container">
+                {children}
+              </main>
+              <CommandPalette />
+              <AmbientPlayer />
+              <Footer />
+            </ReviewCountProvider>
           </ToastProvider>
         </ThemeProvider>
       </body>

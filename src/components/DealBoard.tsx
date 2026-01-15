@@ -3,47 +3,19 @@
 import { useState, useCallback } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import type { Deal } from '@/types/database'
+import { getDealDueDateStatus, formatDueDate } from '@/lib/dateUtils'
+import { STAGES, STAGE_COLORS } from '@/constants/stages'
 
-const STAGES = [
-  { id: 'lead', label: 'Lead', color: '#6b7280' },
-  { id: 'discovery', label: 'Discovery', color: '#3b82f6' },
-  { id: 'evaluation', label: 'Evaluation', color: '#8b5cf6' },
-  { id: 'negotiation', label: 'Negotiation', color: '#f59e0b' },
-  { id: 'closed_won', label: 'Closed Won', color: '#10b981' },
-  { id: 'closed_lost', label: 'Closed Lost', color: '#ef4444' },
-]
+// Build STAGES_WITH_COLORS from constants
+const STAGES_WITH_COLORS = STAGES.map(s => ({
+  id: s.value,
+  label: s.label,
+  color: STAGE_COLORS[s.value],
+}))
 
 interface DealBoardProps {
   initialDeals: Deal[]
   onDealClick?: (deal: Deal) => void
-}
-
-function getDueDateStatus(dueDate: string | null): 'overdue' | 'soon' | 'normal' {
-  if (!dueDate) return 'normal'
-
-  const due = new Date(dueDate)
-  due.setHours(0, 0, 0, 0)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-
-  if (diffDays < 0) return 'overdue'
-  if (diffDays <= 3) return 'soon'
-  return 'normal'
-}
-
-function formatDueDate(dueDate: string | null): string {
-  if (!dueDate) return ''
-  const date = new Date(dueDate)
-  const today = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  if (date.toDateString() === today.toDateString()) return 'Today'
-  if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 interface DealCardProps {
@@ -53,7 +25,7 @@ interface DealCardProps {
 }
 
 function DealCard({ deal, index, onClick }: DealCardProps) {
-  const dueStatus = getDueDateStatus(deal.next_step_due)
+  const dueStatus = getDealDueDateStatus(deal.next_step_due)
 
   return (
     <Draggable draggableId={deal.id} index={index}>
@@ -120,7 +92,7 @@ export function DealBoard({ initialDeals, onDealClick }: DealBoardProps) {
   const [deals, setDeals] = useState(initialDeals)
   const [isUpdating, setIsUpdating] = useState(false)
 
-  const dealsByStage = STAGES.reduce((acc, stage) => {
+  const dealsByStage = STAGES_WITH_COLORS.reduce((acc, stage) => {
     acc[stage.id] = deals.filter(d => d.stage === stage.id)
     return acc
   }, {} as Record<string, Deal[]>)
@@ -170,7 +142,7 @@ export function DealBoard({ initialDeals, onDealClick }: DealBoardProps) {
     <div className={`deal-board ${isUpdating ? 'updating' : ''}`}>
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="board-columns">
-          {STAGES.map(stage => (
+          {STAGES_WITH_COLORS.map(stage => (
             <StageColumn
               key={stage.id}
               stage={stage}

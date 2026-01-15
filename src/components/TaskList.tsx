@@ -3,40 +3,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AsanaTask, GroupedTasks } from '@/lib/asana'
 import { TaskDetailModal } from './TaskDetailModal'
+import { getTaskDueDateStatus, formatDueDate, formatLastUpdated } from '@/lib/dateUtils'
 
 const REFRESH_INTERVAL = 30000 // 30 seconds
 
 interface TaskListProps {
   initialData: GroupedTasks[]
-}
-
-function getDueDateStatus(dueOn: string | null, completed: boolean): 'overdue' | 'today' | 'week' | 'normal' {
-  if (!dueOn || completed) return 'normal'
-
-  const due = new Date(dueOn)
-  due.setHours(0, 0, 0, 0)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-
-  if (diffDays < 0) return 'overdue'
-  if (diffDays === 0) return 'today'
-  if (diffDays <= 7) return 'week'
-  return 'normal'
-}
-
-function formatDueDate(dueOn: string | null): string {
-  if (!dueOn) return ''
-  const date = new Date(dueOn)
-  const today = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  if (date.toDateString() === today.toDateString()) return 'Today'
-  if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 interface SubtaskRowProps {
@@ -98,7 +70,7 @@ function TaskRow({ task, onTaskClick, onComplete }: TaskRowProps) {
   const [loadingSubtasks, setLoadingSubtasks] = useState(false)
 
   const hasSubtasks = (task.num_subtasks || 0) > 0
-  const dueDateStatus = getDueDateStatus(task.due_on, isCompleted)
+  const dueDateStatus = getTaskDueDateStatus(task.due_on, isCompleted)
 
   const handleComplete = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -259,15 +231,6 @@ function Section({ section, tasks, onTaskClick, onComplete }: SectionProps) {
       )}
     </div>
   )
-}
-
-function formatLastUpdated(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000)
-  if (seconds < 5) return 'Just now'
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes === 1) return '1 min ago'
-  return `${minutes} mins ago`
 }
 
 export function TaskList({ initialData }: TaskListProps) {

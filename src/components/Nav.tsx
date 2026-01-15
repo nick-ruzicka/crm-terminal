@@ -4,27 +4,15 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import ThemeToggle from './ThemeToggle'
+import { useReviewCount } from './ReviewCountContext'
 
 export function Nav() {
   const pathname = usePathname() || '/'
-  const [reviewCount, setReviewCount] = useState(0)
+  const { count: reviewCount } = useReviewCount()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
-    async function fetchCount() {
-      try {
-        const res = await fetch('/api/review/count')
-        const data = await res.json()
-        setReviewCount(data.count || 0)
-      } catch {
-        console.error('Failed to fetch review count')
-      }
-    }
-    fetchCount()
-    // Refresh count every 60 seconds
-    const interval = setInterval(fetchCount, 60000)
-    return () => clearInterval(interval)
   }, [])
 
   return (

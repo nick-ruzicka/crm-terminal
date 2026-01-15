@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import Link from 'next/link'
 import type { Deal } from '@/types/database'
 import { getTasksDueSoon, getTasksDueToday, isTaskOverdue } from '@/lib/asana'
@@ -10,6 +10,7 @@ import {
   TasksDueTodayWidget,
   ActivityFeedWidget,
 } from '@/components/DashboardWidgets'
+import { formatStageName, formatRelativeTime } from '@/lib/dateUtils'
 
 interface DashboardStats {
   total: number
@@ -25,39 +26,15 @@ interface DashboardStats {
   }>
 }
 
-const STAGE_LABELS: Record<string, string> = {
-  lead: 'Lead',
-  discovery: 'Discovery',
-  evaluation: 'Evaluation',
-  negotiation: 'Negotiation',
-  closed_won: 'Closed Won',
-  closed_lost: 'Closed Lost',
-}
-
-function formatStageName(stage: string): string {
-  return STAGE_LABELS[stage] || stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
-
-function formatRelativeTime(date: Date): string {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return 'Just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
 async function getDashboardStats(): Promise<DashboardStats> {
+  const supabase = getSupabase()
+
   const [dealsRes, reviewsRes, recentDealsRes] = await Promise.all([
     supabase.from('deals').select('*'),
+    // Fetch ids and count manually (Supabase JS client has issues with count + multiple eq filters)
     supabase
       .from('notes')
-      .select('*', { count: 'exact', head: true })
+      .select('id')
       .eq('review_status', 'pending')
       .eq('is_potential_deal', true),
     supabase
@@ -94,7 +71,7 @@ async function getDashboardStats(): Promise<DashboardStats> {
     total: dealList.length,
     byStage,
     recentDeals: recentDealsList.slice(0, 5),
-    pendingReviews: reviewsRes.count || 0,
+    pendingReviews: reviewsRes.data?.length || 0,
     recentActivity,
   }
 }

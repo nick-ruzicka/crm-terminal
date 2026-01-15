@@ -190,6 +190,69 @@ const tools: Anthropic.Tool[] = [
       properties: {},
       required: []
     }
+  },
+
+  // BULK OPERATION TOOLS
+  {
+    name: 'bulk_query_deals',
+    description: 'Query deals with filters to preview what will be affected by a bulk operation. Always use this first before bulk_delete_deals or bulk_update_deals to show the user what will be changed.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        stage: { type: 'string', enum: ['lead', 'discovery', 'evaluation', 'negotiation', 'closed_won', 'closed_lost'], description: 'Filter by stage' },
+        deal_type: { type: 'string', enum: ['partnership', 'integration', 'investment', 'advisory', 'other'], description: 'Filter by deal type' },
+        source: { type: 'string', enum: ['inbound', 'outbound', 'referral', 'event', 'other'], description: 'Filter by source' },
+        company: { type: 'string', description: 'Filter by company name (partial match)' },
+        name: { type: 'string', description: 'Filter by deal name (partial match)' },
+        created_before: { type: 'string', description: 'Filter deals created before this date (YYYY-MM-DD)' },
+        created_after: { type: 'string', description: 'Filter deals created after this date (YYYY-MM-DD)' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'bulk_delete_deals',
+    description: 'Delete multiple deals by their IDs. Always use bulk_query_deals first to preview and confirm with the user before deleting.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of deal UUIDs to delete'
+        },
+        confirmed: { type: 'boolean', description: 'Must be true to confirm deletion. Ask user to confirm first.' }
+      },
+      required: ['ids']
+    }
+  },
+  {
+    name: 'bulk_update_deals',
+    description: 'Update multiple deals with the same values. Always use bulk_query_deals first to preview and confirm with the user.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of deal UUIDs to update'
+        },
+        updates: {
+          type: 'object',
+          description: 'Fields to update. Allowed: stage, status, deal_type, priority, source, notes',
+          properties: {
+            stage: { type: 'string', enum: ['lead', 'discovery', 'evaluation', 'negotiation', 'closed_won', 'closed_lost'] },
+            deal_type: { type: 'string', enum: ['partnership', 'integration', 'investment', 'advisory', 'other'] },
+            source: { type: 'string', enum: ['inbound', 'outbound', 'referral', 'event', 'other'] },
+            priority: { type: 'string' },
+            status: { type: 'string' },
+            notes: { type: 'string' }
+          }
+        },
+        confirmed: { type: 'boolean', description: 'Must be true to confirm update. Ask user to confirm first.' }
+      },
+      required: ['ids', 'updates']
+    }
   }
 ]
 
@@ -420,6 +483,84 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           .sort((a, b) => b[1] - a[1])
           .map(([stage, count]) => `- ${stage}: ${count}`)
           .join('\n')}`
+      }
+
+      case 'bulk_query_deals': {
+        const filters = input as {
+          stage?: string
+          deal_type?: string
+          source?: string
+          company?: string
+          name?: string
+          created_before?: string
+          created_after?: string
+        }
+
+        // Call the bulk-query API endpoint
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filters }),
+        })
+
+        const result = await response.json()
+        if (result.error) return `Error querying deals: ${result.error}`
+
+        const { deals, count, truncated } = result
+        if (count === 0) return 'No deals found matching those filters.'
+
+        const dealList = deals.slice(0, 20).map((d: DealRow) =>
+          `- ${d.company} (${d.stage})${d.deal_type ? ` [${d.deal_type}]` : ''}`
+        ).join('\n')
+
+        return `Found ${count} deal(s) matching filters${truncated ? ' (limited to 500)' : ''}:\n${dealList}${count > 20 ? `\n... and ${count - 20} more` : ''}\n\nDeal IDs: ${result.ids.join(', ')}`
+      }
+
+      case 'bulk_delete_deals': {
+        const { ids, confirmed } = input as { ids: string[]; confirmed?: boolean }
+
+        if (!confirmed) {
+          return `CONFIRMATION REQUIRED: This will permanently delete ${ids.length} deal(s). This action cannot be undone. Please ask the user to confirm by saying something like "yes, delete them" or "confirm deletion".`
+        }
+
+        // Call the bulk-delete API endpoint
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        })
+
+        const result = await response.json()
+        if (result.error) return `Error deleting deals: ${result.error}`
+
+        return `Successfully deleted ${result.deleted} deal(s).`
+      }
+
+      case 'bulk_update_deals': {
+        const { ids, updates, confirmed } = input as {
+          ids: string[]
+          updates: Record<string, unknown>
+          confirmed?: boolean
+        }
+
+        if (!confirmed) {
+          const updateFields = Object.entries(updates)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ')
+          return `CONFIRMATION REQUIRED: This will update ${ids.length} deal(s) with: ${updateFields}. Please ask the user to confirm.`
+        }
+
+        // Call the bulk-update API endpoint
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, updates }),
+        })
+
+        const result = await response.json()
+        if (result.error) return `Error updating deals: ${result.error}`
+
+        return `Successfully updated ${result.updated} deal(s). Fields changed: ${result.fields.join(', ')}`
       }
 
       default:

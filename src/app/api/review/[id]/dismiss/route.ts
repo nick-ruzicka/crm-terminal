@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-// Use untyped client for flexible operations
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-)
+import { getSupabase } from '@/lib/supabase'
 
 export async function POST(
   _request: NextRequest,
@@ -13,6 +7,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+    const supabase = getSupabase()
 
     const { error } = await supabase
       .from('notes')

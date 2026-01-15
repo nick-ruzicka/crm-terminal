@@ -5,31 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import type { Deal, Contact, Note } from '@/types/database'
 import { useToast } from './Toast'
 import { restoreMarkdownFormatting } from '@/lib/markdown'
-
-// Constants - values must be lowercase to match database check constraints
-const STAGES = [
-  { value: 'lead', label: 'Lead' },
-  { value: 'discovery', label: 'Discovery' },
-  { value: 'evaluation', label: 'Evaluation' },
-  { value: 'negotiation', label: 'Negotiation' },
-  { value: 'closed_won', label: 'Closed Won' },
-  { value: 'closed_lost', label: 'Closed Lost' },
-]
-
-const DEAL_TYPES = [
-  { value: 'partnership', label: 'Partnership' },
-  { value: 'integration', label: 'Integration' },
-  { value: 'investment', label: 'Investment' },
-  { value: 'other', label: 'Other' },
-]
-
-const SOURCES = [
-  { value: 'inbound', label: 'Inbound' },
-  { value: 'outbound', label: 'Outbound' },
-  { value: 'referral', label: 'Referral' },
-  { value: 'event', label: 'Event' },
-  { value: 'other', label: 'Other' },
-]
+import { STAGES, DEAL_TYPES, SOURCES } from '@/constants/stages'
 
 // New Deal Modal
 interface NewDealModalProps {
