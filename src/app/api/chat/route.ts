@@ -262,6 +262,33 @@ const tools: Anthropic.Tool[] = [
       properties: {},
       required: []
     }
+  },
+  {
+    name: 'analyze_tasks',
+    description: 'Get comprehensive task analysis from Asana. Returns task counts by status, overdue tasks, tasks due this week, and tasks grouped by deal. Use this for questions about task workload, what\'s overdue, or upcoming deadlines.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'analyze_notes',
+    description: 'Get comprehensive notes analysis. Returns counts by review status, orphaned notes (not linked to deals), recent meeting notes, and notes grouped by deal. Use this for questions about notes that need review or meeting coverage.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'check_pipeline_health',
+    description: 'Get overall pipeline health score and items needing attention. Returns health score (0-100), overdue tasks, pending reviews, stale deals, deals without recent notes, and closing deals with open tasks. USE THIS FIRST when Nick asks "what needs attention?", "what should I focus on?", or similar prioritization questions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: []
+    }
   }
 ]
 
@@ -612,6 +639,123 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           analysis += `\n### Suggestions\n`
           for (const suggestion of result.suggestions) {
             analysis += `- **${suggestion.action}** (${suggestion.count} deals): ${suggestion.reason}\n`
+          }
+        }
+
+        return analysis
+      }
+
+      case 'analyze_tasks': {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/tasks/bulk-analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        const result = await response.json()
+        if (result.error) return `Error analyzing tasks: ${result.error}`
+
+        let analysis = `## Task Analysis (${result.total} total tasks)\n\n`
+
+        analysis += `### By Status\n`
+        analysis += `- Todo: ${result.byStatus.todo}\n`
+        analysis += `- In Progress: ${result.byStatus.in_progress}\n`
+        analysis += `- Done: ${result.byStatus.done}\n`
+
+        if (result.overdue.length > 0) {
+          analysis += `\n### Overdue Tasks (${result.overdue.length})\n`
+          for (const task of result.overdue.slice(0, 10)) {
+            analysis += `- **${task.title}**${task.deal_name ? ` (${task.deal_name})` : ''} - ${task.days_overdue} days overdue\n`
+          }
+        }
+
+        if (result.dueThisWeek.length > 0) {
+          analysis += `\n### Due This Week (${result.dueThisWeek.length})\n`
+          for (const task of result.dueThisWeek.slice(0, 10)) {
+            analysis += `- ${task.title}${task.deal_name ? ` (${task.deal_name})` : ''} - due ${task.due_date}\n`
+          }
+        }
+
+        analysis += `\n### Summary\n`
+        analysis += `- Unlinked tasks (no deal): ${result.unlinked}\n`
+        analysis += `- Tasks linked to deals: ${Object.keys(result.byDeal).length} deals\n`
+
+        return analysis
+      }
+
+      case 'analyze_notes': {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/notes/bulk-analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        const result = await response.json()
+        if (result.error) return `Error analyzing notes: ${result.error}`
+
+        let analysis = `## Notes Analysis (${result.total} total notes)\n\n`
+
+        analysis += `### By Review Status\n`
+        analysis += `- Pending: ${result.byReviewStatus.pending}\n`
+        analysis += `- Confirmed: ${result.byReviewStatus.confirmed}\n`
+        analysis += `- Approved: ${result.byReviewStatus.approved}\n`
+        analysis += `- Dismissed: ${result.byReviewStatus.dismissed}\n`
+
+        analysis += `\n### Summary\n`
+        analysis += `- Pending Review (potential deals): ${result.pendingReview}\n`
+        analysis += `- Orphaned (not linked to deals): ${result.orphaned}\n`
+
+        if (result.recentMeetings.length > 0) {
+          analysis += `\n### Recent Meetings (last 7 days)\n`
+          for (const meeting of result.recentMeetings.slice(0, 10)) {
+            analysis += `- ${meeting.suggested_company || 'Meeting note'} (${meeting.created_at.split('T')[0]})\n`
+          }
+        }
+
+        return analysis
+      }
+
+      case 'check_pipeline_health': {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/pipeline/health`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        const result = await response.json()
+        if (result.error) return `Error checking pipeline health: ${result.error}`
+
+        let analysis = `## Pipeline Health Score: ${result.healthScore}/100\n\n`
+
+        analysis += `### Summary\n`
+        analysis += `- Active deals: ${result.summary.deals_active} of ${result.summary.deals_total}\n`
+        analysis += `- Overdue tasks: ${result.summary.tasks_overdue}\n`
+        analysis += `- Pending reviews: ${result.summary.reviews_pending}\n`
+        analysis += `- Follow-ups needed: ${result.summary.followups_needed}\n`
+
+        if (result.needsAttention.length > 0) {
+          analysis += `\n### Needs Attention (Priority Order)\n`
+          for (const item of result.needsAttention) {
+            const priority = item.priority === 'high' ? '🔴' : item.priority === 'medium' ? '🟡' : '🟢'
+            if (item.type === 'deal_stale') {
+              analysis += `${priority} **${item.deal}** - stale for ${item.days} days → ${item.action}\n`
+            } else if (item.type === 'task_overdue') {
+              analysis += `${priority} **${item.task}**${item.deal ? ` (${item.deal})` : ''} - ${item.days} days overdue → ${item.action}\n`
+            } else if (item.type === 'review_pending') {
+              analysis += `${priority} Review: ${item.note} (${item.confidence}% confidence) → ${item.action}\n`
+            }
+          }
+        }
+
+        if (result.closingDealsWithOpenTasks.length > 0) {
+          analysis += `\n### Closing Deals with Open Tasks\n`
+          for (const deal of result.closingDealsWithOpenTasks) {
+            analysis += `- **${deal.deal}** (${deal.stage}) - ${deal.open_tasks} open task(s)\n`
+          }
+        }
+
+        if (result.dealsWithoutRecentNotes.length > 0) {
+          analysis += `\n### Deals Without Recent Notes (14+ days)\n`
+          for (const deal of result.dealsWithoutRecentNotes.slice(0, 5)) {
+            const days = deal.days_since_note === -1 ? 'never' : `${deal.days_since_note} days ago`
+            analysis += `- **${deal.company}** (${deal.stage}) - last note: ${days}\n`
           }
         }
 
