@@ -253,6 +253,15 @@ const tools: Anthropic.Tool[] = [
       },
       required: ['ids', 'updates']
     }
+  },
+  {
+    name: 'analyze_pipeline',
+    description: 'Get a comprehensive analysis of the entire deal pipeline in one call. Returns counts by stage, categorization by type (bridges, onramps, MMs, defi, etc.), stale deals, and actionable suggestions. Use this instead of making multiple queries when Nick asks for pipeline overview, cleanup suggestions, or deal analysis.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: []
+    }
   }
 ]
 
@@ -563,6 +572,52 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         return `Successfully updated ${result.updated} deal(s). Fields changed: ${result.fields.join(', ')}`
       }
 
+      case 'analyze_pipeline': {
+        // Call the bulk-analyze API endpoint
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        const result = await response.json()
+        if (result.error) return `Error analyzing pipeline: ${result.error}`
+
+        // Format the response for Claude
+        let analysis = `## Pipeline Analysis (${result.total} deals)\n\n`
+
+        analysis += `### By Stage\n`
+        for (const [stage, count] of Object.entries(result.byStage)) {
+          analysis += `- ${stage}: ${count}\n`
+        }
+
+        analysis += `\n### By Category\n`
+        for (const [category, count] of Object.entries(result.byCategory)) {
+          if ((count as number) > 0) {
+            analysis += `- ${category}: ${count}\n`
+          }
+        }
+
+        analysis += `\n### Critical Path Deals\n`
+        analysis += `- Bridges: ${result.criticalPath.bridges}\n`
+        analysis += `- On-ramps: ${result.criticalPath.onramps}\n`
+        analysis += `- Market Makers: ${result.criticalPath.market_makers}\n`
+        analysis += `- Prediction Markets: ${result.criticalPath.prediction_markets}\n`
+        analysis += `- Oracles: ${result.criticalPath.oracles}\n`
+
+        analysis += `\n### Health\n`
+        analysis += `- Stale (90+ days): ${result.stale}\n`
+        analysis += `- Needs attention (30-90 days): ${result.needsAttention}\n`
+
+        if (result.suggestions.length > 0) {
+          analysis += `\n### Suggestions\n`
+          for (const suggestion of result.suggestions) {
+            analysis += `- **${suggestion.action}** (${suggestion.count} deals): ${suggestion.reason}\n`
+          }
+        }
+
+        return analysis
+      }
+
       default:
         return `Unknown tool: ${name}`
     }
@@ -620,70 +675,138 @@ export async function POST(request: NextRequest) {
     const summary = await getCRMSummary()
     const systemPrompt = buildSystemPrompt(summary)
 
-    // Initial API call with tools
-    let response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: systemPrompt,
-      tools,
-      messages: messages.map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
+    // Create a streaming response
+    const encoder = new TextEncoder()
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const processedMessages = [...messages.map((m: { role: string; content: string }) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          }))]
+
+          let continueLoop = true
+
+          while (continueLoop) {
+            // Use streaming API
+            const stream = anthropic.messages.stream({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 1024,
+              system: systemPrompt,
+              tools,
+              messages: processedMessages,
+            })
+
+            // Collect the full response while streaming text
+            const collectedContent: Anthropic.ContentBlock[] = []
+            let currentToolUse: { id: string; name: string; input: string } | null = null
+
+            for await (const event of stream) {
+              if (event.type === 'content_block_start') {
+                if (event.content_block.type === 'text') {
+                  // Text block starting
+                } else if (event.content_block.type === 'tool_use') {
+                  // Tool use starting - show indicator
+                  currentToolUse = {
+                    id: event.content_block.id,
+                    name: event.content_block.name,
+                    input: '',
+                  }
+                  controller.enqueue(encoder.encode(`\n[Using ${event.content_block.name}...]\n`))
+                }
+              } else if (event.type === 'content_block_delta') {
+                if (event.delta.type === 'text_delta') {
+                  // Stream text immediately
+                  controller.enqueue(encoder.encode(event.delta.text))
+                } else if (event.delta.type === 'input_json_delta' && currentToolUse) {
+                  // Accumulate tool input
+                  currentToolUse.input += event.delta.partial_json
+                }
+              } else if (event.type === 'content_block_stop') {
+                if (currentToolUse) {
+                  // Tool use block complete - add to collected content
+                  try {
+                    collectedContent.push({
+                      type: 'tool_use',
+                      id: currentToolUse.id,
+                      name: currentToolUse.name,
+                      input: JSON.parse(currentToolUse.input || '{}'),
+                    })
+                  } catch {
+                    collectedContent.push({
+                      type: 'tool_use',
+                      id: currentToolUse.id,
+                      name: currentToolUse.name,
+                      input: {},
+                    })
+                  }
+                  currentToolUse = null
+                }
+              }
+            }
+
+            // Get final message to check stop reason
+            const finalMessage = await stream.finalMessage()
+
+            // Add any text blocks to collected content
+            for (const block of finalMessage.content) {
+              if (block.type === 'text') {
+                collectedContent.push(block)
+              }
+            }
+
+            if (finalMessage.stop_reason === 'tool_use') {
+              // Execute tools
+              const toolUseBlocks = collectedContent.filter(
+                (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+              )
+
+              const toolResults: Anthropic.ToolResultBlockParam[] = []
+              for (const toolUse of toolUseBlocks) {
+                const result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>)
+                toolResults.push({
+                  type: 'tool_result',
+                  tool_use_id: toolUse.id,
+                  content: result,
+                })
+              }
+
+              // Add assistant message with tool calls
+              processedMessages.push({
+                role: 'assistant' as const,
+                content: finalMessage.content,
+              })
+
+              // Add tool results
+              processedMessages.push({
+                role: 'user' as const,
+                content: toolResults,
+              })
+
+              // Continue loop to stream the next response
+            } else {
+              // No more tool calls, we're done
+              continueLoop = false
+            }
+          }
+
+          controller.close()
+        } catch (error) {
+          console.error('Streaming error:', error)
+          controller.enqueue(encoder.encode('\n\nError: Failed to process request.'))
+          controller.close()
+        }
+      },
     })
 
-    // Process tool calls in a loop
-    const processedMessages = [...messages.map((m: { role: string; content: string }) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-    }))]
-
-    while (response.stop_reason === 'tool_use') {
-      // Extract tool use blocks
-      const toolUseBlocks = response.content.filter(
-        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
-      )
-
-      // Execute tools and collect results
-      const toolResults: Anthropic.ToolResultBlockParam[] = []
-      for (const toolUse of toolUseBlocks) {
-        const result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>)
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: toolUse.id,
-          content: result,
-        })
-      }
-
-      // Add assistant message with tool calls
-      processedMessages.push({
-        role: 'assistant' as const,
-        content: response.content,
-      })
-
-      // Add tool results
-      processedMessages.push({
-        role: 'user' as const,
-        content: toolResults,
-      })
-
-      // Continue conversation
-      response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: systemPrompt,
-        tools,
-        messages: processedMessages,
-      })
-    }
-
-    // Extract final text response
-    const textBlock = response.content.find(
-      (block): block is Anthropic.TextBlock => block.type === 'text'
-    )
-    const assistantMessage = textBlock?.text || 'Action completed.'
-
-    return NextResponse.json({ message: assistantMessage })
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'Transfer-Encoding': 'chunked',
+      },
+    })
   } catch (error) {
     console.error('Chat API error:', error)
 

@@ -126,6 +126,10 @@ export default function ChatPage() {
       await saveMessage(sessionId, 'user', userMessage.content)
     }
 
+    // Add empty assistant message that we'll stream into
+    const assistantMessageIndex = newMessages.length
+    setMessages([...newMessages, { role: 'assistant', content: '' }])
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -133,17 +137,41 @@ export default function ChatPage() {
         body: JSON.stringify({ messages: newMessages }),
       })
 
-      const data = await response.json()
-      const assistantContent = data.error ? `Error: ${data.error}` : data.message
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Request failed')
+      }
 
-      setMessages([
-        ...newMessages,
-        { role: 'assistant', content: assistantContent },
-      ])
+      // Handle streaming response
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let accumulatedContent = ''
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = decoder.decode(value, { stream: true })
+          accumulatedContent += chunk
+
+          // Update the assistant message with accumulated content
+          setMessages(prev => {
+            const updated = [...prev]
+            updated[assistantMessageIndex] = {
+              role: 'assistant',
+              content: accumulatedContent,
+            }
+            return updated
+          })
+        }
+      }
+
+      const finalContent = accumulatedContent || 'Action completed.'
 
       // Save assistant message
       if (sessionId) {
-        await saveMessage(sessionId, 'assistant', assistantContent)
+        await saveMessage(sessionId, 'assistant', finalContent)
         // Update session in list (move to top)
         setSessions(prev => {
           const updated = prev.find(s => s.id === sessionId)
@@ -153,12 +181,16 @@ export default function ChatPage() {
           return prev
         })
       }
-    } catch {
-      const errorContent = 'Failed to connect to the server.'
-      setMessages([
-        ...newMessages,
-        { role: 'assistant', content: errorContent },
-      ])
+    } catch (error) {
+      const errorContent = error instanceof Error ? `Error: ${error.message}` : 'Failed to connect to the server.'
+      setMessages(prev => {
+        const updated = [...prev]
+        updated[assistantMessageIndex] = {
+          role: 'assistant',
+          content: errorContent,
+        }
+        return updated
+      })
       if (sessionId) {
         await saveMessage(sessionId, 'assistant', errorContent)
       }
@@ -295,11 +327,6 @@ export default function ChatPage() {
                   )}
                 </div>
               ))
-            )}
-            {isLoading && (
-              <div className="message assistant">
-                <span className="thinking-indicator">Thinking...</span>
-              </div>
             )}
             <div ref={messagesEndRef} />
           </div>
