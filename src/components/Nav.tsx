@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import ThemeToggle from './ThemeToggle'
 
 export function Nav() {
   const pathname = usePathname() || '/'
@@ -67,6 +68,7 @@ export function Nav() {
             Chat
           </Link>
         </div>
+        <ThemeToggle />
       </div>
     </nav>
   )

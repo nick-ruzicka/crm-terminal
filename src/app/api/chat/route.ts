@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { supabase } from '@/lib/supabase'
 import { getProjectTasks, getProjectSections, completeTask as asanaCompleteTask, asanaFetch, AsanaTask } from '@/lib/asana'
+import { buildSystemPrompt, CRMSummary } from '@/lib/system-prompt'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -429,7 +430,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
   }
 }
 
-async function getCRMSummary() {
+async function getCRMSummary(): Promise<CRMSummary> {
   // Get summary stats instead of full data to stay under token limits
   const [dealsRes, notesRes, asanaTasks] = await Promise.all([
     supabase.from('deals').select('id, company, stage'),
@@ -459,7 +460,7 @@ async function getCRMSummary() {
     incompleteTasks: tasks.filter(t => !t.completed).slice(0, 10).map(t => ({
       gid: t.gid,
       name: t.name,
-      due_on: t.due_on,
+      due_on: t.due_on || null,
     })),
   }
 }
@@ -476,40 +477,7 @@ export async function POST(request: NextRequest) {
     }
 
     const summary = await getCRMSummary()
-
-    const systemPrompt = `You are a helpful CRM assistant with access to the user's deal pipeline data and Asana tasks. You can both query and modify data using the tools provided.
-
-CRM SUMMARY:
-- Total Deals: ${summary.totalDeals}
-- Total Notes: ${summary.totalNotes}
-- Total Tasks: ${summary.totalTasks}
-
-DEALS BY STAGE:
-${Object.entries(summary.stageCounts).map(([stage, count]) => `- ${stage}: ${count}`).join('\n')}
-
-SAMPLE COMPANIES: ${summary.sampleDeals.join(', ')}
-
-UPCOMING TASKS:
-${summary.incompleteTasks.map(t => `- ${t.name}${t.due_on ? ` (due: ${t.due_on})` : ''}`).join('\n') || 'None'}
-
-AVAILABLE TOOLS:
-- find_deal_by_company: Search for deals by company name
-- update_deal_stage: Move a deal to a different pipeline stage
-- create_deal: Create a new deal
-- delete_deal: Delete a deal by ID
-- add_note_to_deal / add_note_by_company: Add notes to deals
-- search_notes: Search note content
-- create_task / complete_task: Manage Asana tasks
-- get_deals_by_stage: List all deals in a stage
-- get_stage_counts: Get pipeline overview
-
-GUIDELINES:
-1. Use find_deal_by_company first to get the deal ID when the user references a company
-2. For destructive actions, warn the user and require confirmation
-3. Be concise but helpful
-4. After completing an action, briefly confirm what was done
-
-IMPORTANT: For bulk deletions, require explicit confirmation.`
+    const systemPrompt = buildSystemPrompt(summary)
 
     // Initial API call with tools
     let response = await anthropic.messages.create({
