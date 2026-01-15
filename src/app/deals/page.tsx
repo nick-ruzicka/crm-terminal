@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { DealsTable } from '@/components/DealsTable'
+import { DealsView } from '@/components/DealsView'
 import type { Deal } from '@/types/database'
 
 async function getDeals(): Promise<Deal[]> {
@@ -22,7 +22,7 @@ async function getStages(deals: Deal[]): Promise<string[]> {
     if (d.stage) stages.add(d.stage)
   })
 
-  const stageOrder = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Closed', 'Lost']
+  const stageOrder = ['lead', 'discovery', 'evaluation', 'negotiation', 'closed_won', 'closed_lost']
   return Array.from(stages).sort((a, b) => {
     const aIndex = stageOrder.indexOf(a)
     const bIndex = stageOrder.indexOf(b)
@@ -39,12 +39,5 @@ export default async function DealsPage() {
   const deals = await getDeals()
   const stages = await getStages(deals)
 
-  return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '24px' }}>
-        All Deals
-      </h1>
-      <DealsTable deals={deals} stages={stages} />
-    </div>
-  )
+  return <DealsView deals={deals} stages={stages} />
 }

@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { Deal, Contact, Note } from '@/types/database'
+import { MarkdownContent } from '@/components/MarkdownContent'
 
 async function getDeal(id: string): Promise<Deal | null> {
   const { data: deal, error } = await supabase
@@ -161,7 +162,7 @@ export default async function DealPage({ params }: PageProps) {
                     })}
                   </div>
                 )}
-                <div className="content">{note.content || 'Empty note'}</div>
+                <MarkdownContent content={note.content || 'Empty note'} compact />
               </div>
             ))}
           </div>

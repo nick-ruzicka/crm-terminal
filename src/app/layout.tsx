@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { Nav } from '@/components/Nav'
+import { CommandPalette } from '@/components/CommandPalette'
+import { ToastProvider } from '@/components/Toast'
 
 export const metadata: Metadata = {
   title: 'CRM Terminal',
@@ -15,10 +17,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Nav />
-        <main className="container">
-          {children}
-        </main>
+        <ToastProvider>
+          <Nav />
+          <main className="container">
+            {children}
+          </main>
+          <CommandPalette />
+        </ToastProvider>
       </body>
     </html>
   )

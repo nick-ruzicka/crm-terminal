@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -121,12 +122,13 @@ export default function ChatPage() {
           ) : (
             messages.map((message, index) => (
               <div key={index} className={`message ${message.role}`}>
-                {message.content.split('\n').map((line, i) => (
-                  <span key={i}>
-                    {line}
-                    {i < message.content.split('\n').length - 1 && <br />}
-                  </span>
-                ))}
+                {message.role === 'assistant' ? (
+                  <div className="markdown-content">
+                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  message.content
+                )}
               </div>
             ))
           )}

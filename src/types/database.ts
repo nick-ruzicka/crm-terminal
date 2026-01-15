@@ -25,6 +25,13 @@ export interface Note {
   deal_id: string | null
   content: string | null
   meeting_date: string | null
+  review_status: string | null
+  is_potential_deal: boolean | null
+  confidence: number | null
+  suggested_company: string | null
+  suggested_contact: string | null
+  suggested_deal_type: string | null
+  classification_reason: string | null
 }
 
 export interface Database {
