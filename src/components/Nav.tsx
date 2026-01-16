@@ -49,12 +49,6 @@ export function Nav() {
               <span className="nav-badge">{reviewCount}</span>
             )}
           </Link>
-          <Link
-            href="/chat"
-            className={`nav-link ${pathname === '/chat' ? 'active' : ''}`}
-          >
-            Chat
-          </Link>
         </div>
         <ThemeToggle />
       </div>

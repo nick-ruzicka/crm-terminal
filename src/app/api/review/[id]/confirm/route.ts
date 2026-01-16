@@ -10,7 +10,8 @@ export async function POST(
     const supabase = getSupabase()
 
     // Verify note exists and has a deal_id
-    const { data: note, error: noteError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: note, error: noteError } = await (supabase as any)
       .from('notes')
       .select('id, deal_id')
       .eq('id', id)
@@ -28,7 +29,8 @@ export async function POST(
     }
 
     // Mark as approved (keep existing deal_id)
-    const { error: updateError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: updateError } = await (supabase as any)
       .from('notes')
       .update({ review_status: 'approved' })
       .eq('id', id)

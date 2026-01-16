@@ -7,7 +7,8 @@ export async function GET() {
   try {
     const supabase = getSupabase()
 
-    const { data: deals, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: deals, error } = await (supabase as any)
       .from('deals')
       .select('id, name, company, stage')
       .order('company', { ascending: true })
@@ -45,7 +46,8 @@ export async function POST(request: NextRequest) {
 
     console.log('POST /api/deals - Insert data:', JSON.stringify(insertData, null, 2))
 
-    const { data: deal, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: deal, error } = await (supabase as any)
       .from('deals')
       .insert(insertData)
       .select()

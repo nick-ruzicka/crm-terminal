@@ -9,7 +9,8 @@ export async function POST(
     const { id } = await params
     const supabase = getSupabase()
 
-    const { error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
       .from('notes')
       .update({ review_status: 'dismissed' })
       .eq('id', id)

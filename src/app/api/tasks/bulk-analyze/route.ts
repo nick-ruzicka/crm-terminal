@@ -52,12 +52,14 @@ export async function POST() {
 
     // Get deals for linking task names to deals
     const supabase = getSupabase()
-    const { data: deals } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: deals } = await (supabase as any)
       .from('deals')
       .select('id, name, company')
 
-    const dealMap = new Map(
-      (deals || []).map(d => [d.company?.toLowerCase(), { id: d.id, name: d.company || d.name }])
+    const dealMap = new Map<string | undefined, { id: string; name: string }>(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (deals || []).map((d: any) => [d.company?.toLowerCase(), { id: d.id, name: d.company || d.name }])
     )
 
     // Analyze tasks
@@ -91,7 +93,7 @@ export async function POST() {
       // Try to link task to deal by searching task name for company names
       let linkedDeal: { id: string; name: string } | null = null
       const taskNameLower = task.name.toLowerCase()
-      for (const [companyLower, deal] of dealMap.entries()) {
+      for (const [companyLower, deal] of Array.from(dealMap.entries())) {
         if (companyLower && taskNameLower.includes(companyLower)) {
           linkedDeal = deal
           break

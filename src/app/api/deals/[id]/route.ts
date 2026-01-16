@@ -8,7 +8,8 @@ export async function GET(
   try {
     const { id } = await params
 
-    const { data: deal, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: deal, error } = await (supabase as any)
       .from('deals')
       .select('*')
       .eq('id', id)
@@ -20,8 +21,10 @@ export async function GET(
     }
 
     // Try to fetch contacts associated with this deal
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let contacts: any[] = []
-    const { data: contactsData } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: contactsData } = await (supabase as any)
       .from('contacts')
       .select('*')
       .eq('deal_id', id)
@@ -30,8 +33,10 @@ export async function GET(
     }
 
     // Try to fetch notes associated with this deal
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let notes: any[] = []
-    const { data: notesData } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: notesData } = await (supabase as any)
       .from('notes')
       .select('*')
       .eq('deal_id', id)
@@ -55,7 +60,8 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    const { data: deal, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: deal, error } = await (supabase as any)
       .from('deals')
       .update({
         name: body.name,
@@ -92,7 +98,8 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    const { error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
       .from('deals')
       .delete()
       .eq('id', id)

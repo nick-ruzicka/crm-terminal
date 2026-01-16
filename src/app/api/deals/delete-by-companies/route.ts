@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
     const normalizedNames = companies.map((c: string) => c.toLowerCase().trim())
 
     // First, find matching deals
-    const { data: matchingDeals, error: findError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: matchingDeals, error: findError } = await (supabase as any)
       .from('deals')
       .select('id, company')
 
@@ -30,7 +31,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Filter deals where company matches (case-insensitive)
-    const dealsToDelete = (matchingDeals || []).filter(deal =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dealsToDelete = (matchingDeals || []).filter((deal: any) =>
       deal.company && normalizedNames.includes(deal.company.toLowerCase().trim())
     )
 
@@ -47,15 +49,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         preview: true,
         count: dealsToDelete.length,
-        companies: dealsToDelete.map(d => d.company),
-        ids: dealsToDelete.map(d => d.id),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        companies: dealsToDelete.map((d: any) => d.company),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ids: dealsToDelete.map((d: any) => d.id),
         message: `Found ${dealsToDelete.length} deal(s) to delete. Confirm to proceed.`
       })
     }
 
     // Delete the matching deals
-    const idsToDelete = dealsToDelete.map(d => d.id)
-    const { error: deleteError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const idsToDelete = dealsToDelete.map((d: any) => d.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: deleteError } = await (supabase as any)
       .from('deals')
       .delete()
       .in('id', idsToDelete)
@@ -65,7 +71,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to delete deals' }, { status: 500 })
     }
 
-    const deletedCompanies = dealsToDelete.map(d => d.company)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const deletedCompanies = dealsToDelete.map((d: any) => d.company)
     console.log(`[DELETE BY COMPANIES] Deleted ${dealsToDelete.length} deals: ${deletedCompanies.join(', ')}`)
 
     return NextResponse.json({

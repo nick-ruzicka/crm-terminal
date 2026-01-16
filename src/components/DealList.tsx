@@ -43,8 +43,10 @@ export function DealList({ deals, stages, onDealClick }: DealListProps) {
           bVal = (b.company || b.name || '').toLowerCase()
           break
         case 'stage':
-          aVal = STAGE_ORDER.indexOf(a.stage || '')
-          bVal = STAGE_ORDER.indexOf(b.stage || '')
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          aVal = STAGE_ORDER.indexOf((a.stage || '') as any)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          bVal = STAGE_ORDER.indexOf((b.stage || '') as any)
           if (aVal === -1) aVal = 999
           if (bVal === -1) bVal = 999
           break

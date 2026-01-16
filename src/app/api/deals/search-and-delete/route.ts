@@ -23,7 +23,8 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabase()
 
     // Get all deals
-    const { data: allDeals, error: fetchError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: allDeals, error: fetchError } = await (supabase as any)
       .from('deals')
       .select('id, company')
 
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch deals' }, { status: 500 })
     }
 
-    const deals = allDeals || []
+    const deals: Array<{ id: string; company: string | null }> = allDeals || []
 
     // Find matches for each search term (fuzzy matching)
     const matches: Match[] = []
@@ -90,7 +91,8 @@ export async function POST(request: NextRequest) {
 
     // Delete the matching deals
     const idsToDelete = matches.map(m => m.id)
-    const { error: deleteError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: deleteError } = await (supabase as any)
       .from('deals')
       .delete()
       .in('id', idsToDelete)

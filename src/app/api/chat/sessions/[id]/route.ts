@@ -11,7 +11,8 @@ export async function GET(
   try {
     const supabase = getSupabase()
 
-    const { data: session, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: session, error } = await (supabase as any)
       .from('chat_sessions')
       .select('*')
       .eq('id', params.id)
@@ -41,7 +42,8 @@ export async function PATCH(
 
     // Handle restore (undo delete)
     if (restore) {
-      const { data: session, error } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: session, error } = await (supabase as any)
         .from('chat_sessions')
         .update({ deleted_at: null })
         .eq('id', params.id)
@@ -64,7 +66,8 @@ export async function PATCH(
       updateData.title = title
     }
 
-    const { data: session, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: session, error } = await (supabase as any)
       .from('chat_sessions')
       .update(updateData)
       .eq('id', params.id)
@@ -92,7 +95,8 @@ export async function DELETE(
     const supabase = getSupabase()
 
     // Soft delete: set deleted_at timestamp
-    const { data: session, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: session, error } = await (supabase as any)
       .from('chat_sessions')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', params.id)

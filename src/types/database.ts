@@ -8,6 +8,10 @@ export interface Deal {
   next_step: string | null
   next_step_due: string | null
   hubspot_id: string | null
+  priority: string | null
+  focus_area: string | null
+  created_at: string
+  updated_at: string | null
 }
 
 export interface Contact {
@@ -34,6 +38,33 @@ export interface Note {
   classification_reason: string | null
 }
 
+export interface ChatSession {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface ChatMessage {
+  id: string
+  session_id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export interface Embedding {
+  id: string
+  source_type: 'deal' | 'note' | 'task' | 'chat_message'
+  source_id: string
+  content: string
+  embedding: string // vector stored as string
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -51,6 +82,50 @@ export interface Database {
         Row: Note
         Insert: Omit<Note, 'id'> & { id?: string }
         Update: Partial<Note>
+      }
+      chat_sessions: {
+        Row: ChatSession
+        Insert: Omit<ChatSession, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<ChatSession>
+      }
+      chat_messages: {
+        Row: ChatMessage
+        Insert: Omit<ChatMessage, 'id' | 'created_at'> & {
+          id?: string
+          created_at?: string
+        }
+        Update: Partial<ChatMessage>
+      }
+      embeddings: {
+        Row: Embedding
+        Insert: Omit<Embedding, 'id' | 'created_at'> & {
+          id?: string
+          created_at?: string
+        }
+        Update: Partial<Embedding>
+      }
+    }
+    Functions: {
+      match_embeddings: {
+        Args: {
+          query_embedding: string
+          match_threshold?: number
+          match_count?: number
+          filter_types?: string[] | null
+        }
+        Returns: {
+          id: string
+          source_type: string
+          source_id: string
+          content: string
+          metadata: Record<string, unknown>
+          similarity: number
+        }[]
       }
     }
   }

@@ -17,7 +17,8 @@ export async function POST(
     const supabase = getSupabase()
 
     // Verify note exists
-    const { data: note, error: noteError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: note, error: noteError } = await (supabase as any)
       .from('notes')
       .select('id')
       .eq('id', id)
@@ -28,7 +29,8 @@ export async function POST(
     }
 
     // Verify deal exists
-    const { data: deal, error: dealError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: deal, error: dealError } = await (supabase as any)
       .from('deals')
       .select('id, name, company')
       .eq('id', deal_id)
@@ -39,7 +41,8 @@ export async function POST(
     }
 
     // Link note to deal and mark as approved
-    const { error: updateError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: updateError } = await (supabase as any)
       .from('notes')
       .update({
         deal_id: deal_id,

@@ -26,7 +26,8 @@ export async function POST() {
     const supabase = getSupabase()
 
     // Get all notes with deal info
-    const { data: notes, error: notesError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: notes, error: notesError } = await (supabase as any)
       .from('notes')
       .select('id, deal_id, review_status, suggested_company, is_potential_deal, created_at, meeting_date')
       .order('created_at', { ascending: false })
@@ -37,12 +38,14 @@ export async function POST() {
     }
 
     // Get deals for name lookup
-    const { data: deals } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: deals } = await (supabase as any)
       .from('deals')
       .select('id, name, company')
 
-    const dealMap = new Map(
-      (deals || []).map(d => [d.id, d.company || d.name])
+    const dealMap = new Map<string, string>(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (deals || []).map((d: any) => [d.id, d.company || d.name])
     )
 
     const allNotes = notes || []

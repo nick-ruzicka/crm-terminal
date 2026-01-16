@@ -8,7 +8,8 @@ export async function GET() {
     const supabase = getSupabase()
 
     // Fetch notes with linked deal info
-    const { data: notes, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: notes, error } = await (supabase as any)
       .from('notes')
       .select(`
         *,
@@ -23,7 +24,8 @@ export async function GET() {
     }
 
     // Sort: auto-linked notes first, then by confidence
-    const sortedNotes = (notes || []).sort((a, b) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sortedNotes = (notes || []).sort((a: any, b: any) => {
       // Auto-linked (has deal_id) comes first
       const aLinked = a.deal_id ? 1 : 0
       const bLinked = b.deal_id ? 1 : 0

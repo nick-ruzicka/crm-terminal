@@ -58,7 +58,7 @@ function DealCard({ deal, index, onClick }: DealCardProps) {
 }
 
 interface StageColumnProps {
-  stage: typeof STAGES[0]
+  stage: typeof STAGES_WITH_COLORS[0]
   deals: Deal[]
   onDealClick?: (deal: Deal) => void
 }

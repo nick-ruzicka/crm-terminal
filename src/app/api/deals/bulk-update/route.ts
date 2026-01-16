@@ -62,7 +62,8 @@ export async function POST(request: Request) {
     console.log(`[BULK UPDATE] Fields: ${JSON.stringify(safeUpdates)}`)
     console.log(`[BULK UPDATE] IDs: ${ids.slice(0, 5).join(', ')}${ids.length > 5 ? '...' : ''}`)
 
-    const { error, count } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error, count } = await (supabase as any)
       .from('deals')
       .update(safeUpdates)
       .in('id', ids)

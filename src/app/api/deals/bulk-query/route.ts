@@ -19,7 +19,8 @@ export async function POST(request: Request) {
     }
 
     // Start query
-    let query = supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query = (supabase as any)
       .from('deals')
       .select('id, name, company, stage, deal_type, created_at, updated_at')
 
@@ -74,7 +75,8 @@ export async function POST(request: Request) {
       )
     }
 
-    const ids = deals?.map(d => d.id) || []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ids = deals?.map((d: any) => d.id) || []
 
     // Log query for audit
     console.log(`[BULK QUERY] Found ${ids.length} deals matching filters: ${JSON.stringify(filters)}`)

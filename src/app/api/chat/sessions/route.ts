@@ -8,7 +8,8 @@ export async function GET() {
   try {
     const supabase = getSupabase()
 
-    const { data: sessions, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: sessions, error } = await (supabase as any)
       .from('chat_sessions')
       .select('*')
       .is('deleted_at', null)
@@ -33,7 +34,8 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { title } = body
 
-    const { data: session, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: session, error } = await (supabase as any)
       .from('chat_sessions')
       .insert({
         title: title || 'New Chat',

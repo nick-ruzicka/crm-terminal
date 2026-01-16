@@ -37,7 +37,7 @@ export async function POST(
   try {
     const supabase = getSupabase()
     const body = await request.json()
-    const { role, content } = body
+    const { role, content } = body as { role: string; content: string }
 
     if (!role || !content) {
       return NextResponse.json({ error: 'Role and content are required' }, { status: 400 })
@@ -48,7 +48,8 @@ export async function POST(
     }
 
     // Insert the message
-    const { data: message, error: messageError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: message, error: messageError } = await (supabase as any)
       .from('chat_messages')
       .insert({
         session_id: params.id,
@@ -64,7 +65,8 @@ export async function POST(
     }
 
     // Update session's updated_at timestamp
-    await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any)
       .from('chat_sessions')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', params.id)

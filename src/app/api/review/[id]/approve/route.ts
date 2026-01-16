@@ -13,7 +13,8 @@ export async function POST(
     const supabase = getSupabase()
 
     // Get the note first
-    const { data: noteData, error: noteError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: noteData, error: noteError } = await (supabase as any)
       .from('notes')
       .select('*')
       .eq('id', id)
@@ -26,7 +27,8 @@ export async function POST(
     const note = noteData as Note
 
     // Create the deal
-    const { data: dealData, error: dealError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: dealData, error: dealError } = await (supabase as any)
       .from('deals')
       .insert({
         name: name || note.suggested_company || 'New Deal',
@@ -46,7 +48,8 @@ export async function POST(
     const deal = dealData as Deal
 
     // Update the note with deal_id and review_status
-    const { error: updateError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: updateError } = await (supabase as any)
       .from('notes')
       .update({
         review_status: 'approved',

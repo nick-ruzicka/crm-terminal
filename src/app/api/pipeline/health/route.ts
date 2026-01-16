@@ -51,19 +51,24 @@ export async function POST() {
     const supabase = getSupabase()
 
     // Fetch all data in parallel
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [dealsRes, notesRes, tasksResult] = await Promise.all([
-      supabase.from('deals').select('id, name, company, stage, updated_at'),
-      supabase.from('notes').select('id, deal_id, review_status, is_potential_deal, suggested_company, confidence, created_at'),
+      (supabase as any).from('deals').select('id, name, company, stage, updated_at'),
+      (supabase as any).from('notes').select('id, deal_id, review_status, is_potential_deal, suggested_company, confidence, created_at'),
       getProjectTasks(),
     ])
 
-    const deals = dealsRes.data || []
-    const notes = notesRes.data || []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const deals: any[] = dealsRes.data || []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const notes: any[] = notesRes.data || []
     const tasks = tasksResult || []
 
     // Build deal lookup
-    const dealMap = new Map(deals.map(d => [d.id, d]))
-    const dealByCompany = new Map(deals.map(d => [d.company?.toLowerCase(), d]))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dealMap = new Map(deals.map((d: any) => [d.id, d]))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dealByCompany = new Map(deals.map((d: any) => [d.company?.toLowerCase(), d]))
 
     // Active deals (not closed)
     const activeDeals = deals.filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost')
@@ -118,7 +123,7 @@ export async function POST() {
     for (const task of tasks) {
       if (task.completed) continue
       const taskNameLower = task.name.toLowerCase()
-      for (const [companyLower, deal] of dealByCompany.entries()) {
+      for (const [companyLower, deal] of Array.from(dealByCompany.entries())) {
         if (companyLower && taskNameLower.includes(companyLower)) {
           tasksByDeal.set(deal.id, (tasksByDeal.get(deal.id) || 0) + 1)
           break
@@ -165,7 +170,7 @@ export async function POST() {
       // Try to find linked deal
       let linkedDeal: string | undefined
       const taskNameLower = task.name.toLowerCase()
-      for (const [companyLower, deal] of dealByCompany.entries()) {
+      for (const [companyLower, deal] of Array.from(dealByCompany.entries())) {
         if (companyLower && taskNameLower.includes(companyLower)) {
           linkedDeal = deal.company || deal.name
           break
