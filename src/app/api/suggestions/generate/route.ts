@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { jsonrepair } from 'jsonrepair'
 import { semanticSearch, SemanticSearchResult } from '@/lib/embeddings'
 import { getSupabase } from '@/lib/supabase'
-import { getProjectTasks } from '@/lib/asana'
+import { getMyProjectTasks } from '@/lib/asana'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30 // Reduced from 60 - should be much faster now
@@ -240,9 +240,9 @@ export async function POST(request: Request) {
           total_notes: notesRes.count || 0
         }
       })(),
-      // Overdue tasks from Asana
+      // Overdue tasks from Asana (my tasks only)
       (async () => {
-        const tasks = await getProjectTasks()
+        const tasks = await getMyProjectTasks()
         const today = new Date()
         today.setHours(0, 0, 0, 0)
 

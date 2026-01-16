@@ -52,6 +52,9 @@ const TYPE_LABELS = {
   review_needed: 'Review',
 }
 
+const CACHE_KEY = 'chief_of_staff_suggestions'
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes - prevents reload on tab switch
+
 export default function ChiefOfStaff() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -60,10 +63,27 @@ export default function ChiefOfStaff() {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const { addToast } = useToast()
 
-  const fetchSuggestions = useCallback(async () => {
+  const fetchSuggestions = useCallback(async (skipCache = false) => {
+    // Check localStorage cache first (prevents reload on tab switch)
+    if (!skipCache) {
+      try {
+        const cached = localStorage.getItem(CACHE_KEY)
+        if (cached) {
+          const { suggestions: cachedSuggestions, timestamp } = JSON.parse(cached)
+          if (Date.now() - timestamp < CACHE_TTL_MS) {
+            setSuggestions(cachedSuggestions)
+            setLastGenerated(new Date(timestamp).toISOString())
+            setIsLoading(false)
+            return
+          }
+        }
+      } catch {
+        // Cache read failed, continue to fetch
+      }
+    }
+
     setIsLoading(true)
     try {
-      // Read from database - instant, no generation needed
       const response = await fetch('/api/suggestions')
       if (!response.ok) {
         const error = await response.json()
@@ -72,6 +92,16 @@ export default function ChiefOfStaff() {
       const data: SuggestionsResponse = await response.json()
       setSuggestions(data.suggestions)
       setLastGenerated(data.generated_at)
+
+      // Cache for tab switching
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          suggestions: data.suggestions,
+          timestamp: Date.now()
+        }))
+      } catch {
+        // Cache write failed, continue
+      }
     } catch (error) {
       console.error('Failed to fetch suggestions:', error)
       addToast('error', 'Failed to load suggestions', error instanceof Error ? error.message : undefined)
@@ -80,14 +110,27 @@ export default function ChiefOfStaff() {
     }
   }, [addToast])
 
-  // Fetch on mount - reading from DB is fast
+  // Fetch on mount with cache check
   useEffect(() => {
     fetchSuggestions()
   }, [fetchSuggestions])
 
+  const updateCache = (newSuggestions: Suggestion[]) => {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        suggestions: newSuggestions,
+        timestamp: Date.now()
+      }))
+    } catch {
+      // Cache write failed
+    }
+  }
+
   const dismissSuggestion = async (id: string) => {
     // Optimistic update - remove from list immediately
-    setSuggestions(prev => prev.filter(s => s.id !== id))
+    const updated = suggestions.filter(s => s.id !== id)
+    setSuggestions(updated)
+    updateCache(updated)
 
     try {
       await fetch(`/api/suggestions/${id}`, {
@@ -97,14 +140,15 @@ export default function ChiefOfStaff() {
       })
     } catch (error) {
       console.error('Failed to dismiss suggestion:', error)
-      // Refetch to restore state
-      fetchSuggestions()
+      fetchSuggestions(true)
     }
   }
 
   const completeSuggestion = async (id: string) => {
     // Optimistic update
-    setSuggestions(prev => prev.filter(s => s.id !== id))
+    const updated = suggestions.filter(s => s.id !== id)
+    setSuggestions(updated)
+    updateCache(updated)
 
     try {
       await fetch(`/api/suggestions/${id}`, {
@@ -115,7 +159,7 @@ export default function ChiefOfStaff() {
       addToast('success', 'Action completed')
     } catch (error) {
       console.error('Failed to complete suggestion:', error)
-      fetchSuggestions()
+      fetchSuggestions(true)
     }
   }
 
@@ -163,7 +207,7 @@ export default function ChiefOfStaff() {
           )}
           <button
             className="cos-refresh-btn"
-            onClick={() => fetchSuggestions()}
+            onClick={() => fetchSuggestions(true)}
             disabled={isLoading}
             title="Refresh suggestions"
           >

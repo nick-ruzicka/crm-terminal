@@ -1,4 +1,5 @@
 const ASANA_BASE_URL = 'https://app.asana.com/api/1.0'
+const MY_ASANA_USER_GID = process.env.ASANA_USER_GID || '1208992636286349' // Nick's user ID
 
 export interface AsanaTask {
   gid: string
@@ -66,9 +67,17 @@ export async function getProjectTasks(): Promise<AsanaTask[]> {
   if (!projectId) return []
 
   const tasks = await asanaFetch<AsanaTask[]>(
-    `/projects/${projectId}/tasks?opt_fields=name,notes,due_on,completed,assignee.name,memberships.section.name,num_subtasks`
+    `/projects/${projectId}/tasks?opt_fields=name,notes,due_on,completed,assignee.name,assignee.gid,memberships.section.name,num_subtasks`
   )
   return tasks || []
+}
+
+/**
+ * Get only tasks assigned to me (Nick)
+ */
+export async function getMyProjectTasks(): Promise<AsanaTask[]> {
+  const tasks = await getProjectTasks()
+  return tasks.filter(t => t.assignee?.gid === MY_ASANA_USER_GID)
 }
 
 export async function getTaskSubtasks(taskGid: string): Promise<AsanaTask[]> {
