@@ -8,19 +8,22 @@ interface Suggestion {
   priority: 'critical' | 'high' | 'medium' | 'low'
   type: 'action_item' | 'follow_up' | 'stage_change' | 'task_create' | 'review_needed'
   title: string
-  description: string
+  description: string | null
   source: {
-    type: 'deal' | 'note' | 'task'
+    type: string
     id: string
     name: string
   }
-  suggested_action: string
-  one_click_action?: {
-    endpoint: string
-    method: 'POST' | 'PATCH' | 'DELETE'
-    payload: Record<string, unknown>
-    confirm_message?: string
-  }
+  source_quote: string | null
+  suggested_action: {
+    action: string
+    deal_id?: string
+    note_id?: string
+    task_name?: string
+  } | null
+  shown_count: number
+  escalated_at: string | null
+  created_at: string
 }
 
 interface SuggestionsResponse {
@@ -28,10 +31,9 @@ interface SuggestionsResponse {
   generated_at: string
   context_summary: {
     total_deals: number
-    active_deals: number
-    critical_path_deals: number
-    stale_deals: number
-    overdue_tasks: number
+    active_suggestions: number
+    critical_count: number
+    high_count: number
   }
 }
 
@@ -50,124 +52,74 @@ const TYPE_LABELS = {
   review_needed: 'Review',
 }
 
-const CACHE_KEY = 'chief_of_staff_suggestions'
-const CACHE_TIME_KEY = 'chief_of_staff_time'
-const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes
-
 export default function ChiefOfStaff() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [lastGenerated, setLastGenerated] = useState<string | null>(null)
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [executingIds, setExecutingIds] = useState<Set<string>>(new Set())
   const [isCollapsed, setIsCollapsed] = useState(false)
   const { addToast } = useToast()
 
-  const fetchSuggestions = useCallback(async (forceRefresh = false) => {
+  const fetchSuggestions = useCallback(async () => {
     setIsLoading(true)
     try {
-      const url = forceRefresh
-        ? '/api/suggestions/generate?refresh=true'
-        : '/api/suggestions/generate'
-      const response = await fetch(url, { method: 'POST' })
+      // Read from database - instant, no generation needed
+      const response = await fetch('/api/suggestions')
       if (!response.ok) {
         const error = await response.json()
-        // Handle rate limit errors gracefully
-        if (response.status === 429 || error.error?.includes('rate_limit')) {
-          addToast('warning', 'Rate limit reached', 'Suggestions will refresh in a few minutes')
-          return
-        }
-        throw new Error(error.error || 'Failed to generate suggestions')
+        throw new Error(error.error || 'Failed to fetch suggestions')
       }
       const data: SuggestionsResponse = await response.json()
       setSuggestions(data.suggestions)
       setLastGenerated(data.generated_at)
-      setDismissedIds(new Set())
-
-      // Cache in localStorage for instant load on navigation
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(data.suggestions))
-        localStorage.setItem(CACHE_TIME_KEY, Date.now().toString())
-      } catch {
-        // localStorage might be full or disabled
-      }
     } catch (error) {
       console.error('Failed to fetch suggestions:', error)
-      // Don't show toast for rate limit errors since we already handled them
-      if (error instanceof Error && !error.message.includes('rate_limit')) {
-        addToast('error', 'Failed to generate suggestions', error.message)
-      }
+      addToast('error', 'Failed to load suggestions', error instanceof Error ? error.message : undefined)
     } finally {
       setIsLoading(false)
     }
   }, [addToast])
 
-  // Load from cache first, then fetch if stale
+  // Fetch on mount - reading from DB is fast
   useEffect(() => {
-    // Check localStorage for cached suggestions
-    try {
-      const cached = localStorage.getItem(CACHE_KEY)
-      const cachedTime = localStorage.getItem(CACHE_TIME_KEY)
-
-      if (cached && cachedTime) {
-        const age = Date.now() - parseInt(cachedTime)
-        if (age < CACHE_TTL_MS) {
-          // Cache is fresh - use it immediately
-          setSuggestions(JSON.parse(cached))
-          setLastGenerated(new Date(parseInt(cachedTime)).toISOString())
-          setIsLoading(false)
-          return // Don't fetch
-        }
-      }
-    } catch {
-      // localStorage error - continue to fetch
-    }
-
-    // No cache or stale - fetch fresh data
     fetchSuggestions()
   }, [fetchSuggestions])
 
-  const dismissSuggestion = (id: string) => {
-    setDismissedIds(prev => new Set([...Array.from(prev), id]))
-  }
-
-  const executeAction = async (suggestion: Suggestion) => {
-    if (!suggestion.one_click_action) return
-
-    const { endpoint, method, payload, confirm_message } = suggestion.one_click_action
-
-    if (confirm_message && !window.confirm(confirm_message)) {
-      return
-    }
-
-    setExecutingIds(prev => new Set([...Array.from(prev), suggestion.id]))
+  const dismissSuggestion = async (id: string) => {
+    // Optimistic update - remove from list immediately
+    setSuggestions(prev => prev.filter(s => s.id !== id))
 
     try {
-      const response = await fetch(endpoint, {
-        method,
+      await fetch(`/api/suggestions/${id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ action: 'dismiss' }),
       })
-
-      if (!response.ok) {
-        throw new Error('Action failed')
-      }
-
-      addToast('success', 'Action completed', suggestion.title)
-      dismissSuggestion(suggestion.id)
     } catch (error) {
-      console.error('Action failed:', error)
-      addToast('error', 'Action failed', error instanceof Error ? error.message : undefined)
-    } finally {
-      setExecutingIds(prev => {
-        const next = new Set(prev)
-        next.delete(suggestion.id)
-        return next
-      })
+      console.error('Failed to dismiss suggestion:', error)
+      // Refetch to restore state
+      fetchSuggestions()
     }
   }
 
-  const visibleSuggestions = suggestions.filter(s => !dismissedIds.has(s.id))
+  const completeSuggestion = async (id: string) => {
+    // Optimistic update
+    setSuggestions(prev => prev.filter(s => s.id !== id))
+
+    try {
+      await fetch(`/api/suggestions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete' }),
+      })
+      addToast('success', 'Action completed')
+    } catch (error) {
+      console.error('Failed to complete suggestion:', error)
+      fetchSuggestions()
+    }
+  }
+
+  const visibleSuggestions = suggestions
   const criticalCount = visibleSuggestions.filter(s => s.priority === 'critical').length
   const highCount = visibleSuggestions.filter(s => s.priority === 'high').length
 
@@ -211,7 +163,7 @@ export default function ChiefOfStaff() {
           )}
           <button
             className="cos-refresh-btn"
-            onClick={() => fetchSuggestions(true)}
+            onClick={() => fetchSuggestions()}
             disabled={isLoading}
             title="Refresh suggestions"
           >
@@ -234,7 +186,7 @@ export default function ChiefOfStaff() {
           ) : (
             <div className="cos-suggestions">
               {visibleSuggestions.map(suggestion => (
-                <div key={suggestion.id} className={`cos-suggestion priority-${suggestion.priority}`}>
+                <div key={suggestion.id} className={`cos-suggestion priority-${suggestion.priority}${suggestion.escalated_at ? ' escalated' : ''}`}>
                   <div className="cos-suggestion-header">
                     <div className="cos-suggestion-badges">
                       <span
@@ -246,6 +198,9 @@ export default function ChiefOfStaff() {
                       <span className="cos-type-badge">
                         {TYPE_LABELS[suggestion.type]}
                       </span>
+                      {suggestion.escalated_at && (
+                        <span className="cos-escalated-badge">escalated</span>
+                      )}
                     </div>
                     <button
                       className="cos-dismiss-btn"
@@ -257,17 +212,20 @@ export default function ChiefOfStaff() {
                   </div>
                   <h3 className="cos-suggestion-title">{suggestion.title}</h3>
                   <p className="cos-suggestion-desc">{suggestion.description}</p>
+                  {suggestion.source_quote && (
+                    <p className="cos-source-quote">&ldquo;{suggestion.source_quote}&rdquo;</p>
+                  )}
                   <div className="cos-suggestion-footer">
                     <span className="cos-source">
                       {suggestion.source.type}: {suggestion.source.name}
                     </span>
-                    {suggestion.one_click_action && (
+                    {suggestion.suggested_action && (
                       <button
                         className="cos-action-btn"
-                        onClick={() => executeAction(suggestion)}
+                        onClick={() => completeSuggestion(suggestion.id)}
                         disabled={executingIds.has(suggestion.id)}
                       >
-                        {executingIds.has(suggestion.id) ? 'Working...' : suggestion.suggested_action}
+                        {executingIds.has(suggestion.id) ? 'Working...' : suggestion.suggested_action.action}
                       </button>
                     )}
                   </div>

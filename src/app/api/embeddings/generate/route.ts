@@ -18,6 +18,7 @@ interface GenerateRequest {
 }
 
 interface DealData {
+  id: string
   name: string
   company: string | null
   stage: string | null
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { data: deal, error } = await (supabase as any)
             .from('deals')
-            .select('name, company, stage, deal_type, source')
+            .select('id, name, company, stage, deal_type, source')
             .eq('id', source_id)
             .single() as { data: DealData | null; error: unknown }
 
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
             )
           }
 
-          content = buildDealContent(deal)
+          content = await buildDealContent(deal)
           metadata = {
             deal_name: deal.name,
             company: deal.company || undefined,

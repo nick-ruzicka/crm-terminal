@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/suggestions/background-generate",
+      "schedule": "0 */2 * * *"
+    }
+  ]
+}
