@@ -96,7 +96,8 @@ export async function POST(request: Request) {
                   continue
                 }
 
-                const content = buildDealContent(deal)
+                // buildDealContent is now async - fetches associated notes
+                const content = await buildDealContent(deal)
                 if (!content || content.trim().length < 5) {
                   result.skipped++
                   continue
@@ -110,8 +111,8 @@ export async function POST(request: Request) {
 
                 result.processed++
 
-                // Rate limiting - OpenAI has limits
-                await new Promise(resolve => setTimeout(resolve, 100))
+                // Rate limiting - OpenAI has limits (increased delay for note fetching)
+                await new Promise(resolve => setTimeout(resolve, 150))
               } catch (err) {
                 result.errors++
                 result.error_details?.push(`Deal ${deal.id}: ${err instanceof Error ? err.message : 'Unknown error'}`)

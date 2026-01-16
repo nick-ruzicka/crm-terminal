@@ -50,6 +50,10 @@ const TYPE_LABELS = {
   review_needed: 'Review',
 }
 
+const CACHE_KEY = 'chief_of_staff_suggestions'
+const CACHE_TIME_KEY = 'chief_of_staff_time'
+const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes
+
 export default function ChiefOfStaff() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -79,6 +83,14 @@ export default function ChiefOfStaff() {
       setSuggestions(data.suggestions)
       setLastGenerated(data.generated_at)
       setDismissedIds(new Set())
+
+      // Cache in localStorage for instant load on navigation
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data.suggestions))
+        localStorage.setItem(CACHE_TIME_KEY, Date.now().toString())
+      } catch {
+        // localStorage might be full or disabled
+      }
     } catch (error) {
       console.error('Failed to fetch suggestions:', error)
       // Don't show toast for rate limit errors since we already handled them
@@ -90,8 +102,28 @@ export default function ChiefOfStaff() {
     }
   }, [addToast])
 
-  // Auto-fetch on mount
+  // Load from cache first, then fetch if stale
   useEffect(() => {
+    // Check localStorage for cached suggestions
+    try {
+      const cached = localStorage.getItem(CACHE_KEY)
+      const cachedTime = localStorage.getItem(CACHE_TIME_KEY)
+
+      if (cached && cachedTime) {
+        const age = Date.now() - parseInt(cachedTime)
+        if (age < CACHE_TTL_MS) {
+          // Cache is fresh - use it immediately
+          setSuggestions(JSON.parse(cached))
+          setLastGenerated(new Date(parseInt(cachedTime)).toISOString())
+          setIsLoading(false)
+          return // Don't fetch
+        }
+      }
+    } catch {
+      // localStorage error - continue to fetch
+    }
+
+    // No cache or stale - fetch fresh data
     fetchSuggestions()
   }, [fetchSuggestions])
 

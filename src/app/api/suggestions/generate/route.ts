@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { jsonrepair } from 'jsonrepair'
 import { semanticSearch, SemanticSearchResult } from '@/lib/embeddings'
 import { getSupabase } from '@/lib/supabase'
 import { getProjectTasks } from '@/lib/asana'
@@ -16,7 +17,7 @@ interface CachedSuggestions {
 }
 
 let suggestionsCache: CachedSuggestions | null = null
-const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes - suggestions don't change fast
 
 interface Suggestion {
   id: string
@@ -45,41 +46,41 @@ interface Suggestion {
   }
 }
 
-const CHIEF_OF_STAFF_PROMPT = `You are the Chief of Staff for a BD/partnerships team. Your job is to analyze the current pipeline situation and generate highly actionable suggestions.
+const CHIEF_OF_STAFF_PROMPT = `You are a Chief of Staff assistant. Analyze the pipeline and generate actionable suggestions.
 
 You will receive:
-- Semantically relevant deals that may need follow-up
-- Notes containing action items and commitments
-- Critical path deals (bridges, oracles, market makers)
-- Basic stats (counts, overdue tasks)
+1. semantic_matches: Deals and notes found by relevance search
+2. action_notes: Recent notes with FULL CONTENT containing action keywords - look for commitments!
+3. overdue_tasks: Tasks past their due date
 
-Generate 5-8 prioritized suggestions. Each suggestion must be:
-1. SPECIFIC - Reference actual company names and details from the context
-2. ACTIONABLE - The user should be able to act on it immediately
-3. TIMELY - Prioritize overdue items and stale deals
+PRIORITIZE action_notes - these contain real commitments like:
+- "I will send..." / "I'll follow up..."
+- "We need to..." / "Next step is..."
+- "Action item: ..." / "TODO: ..."
 
-Priority levels:
-- critical: Overdue tasks, unfulfilled commitments, deals going cold
-- high: Things due soon, deals without recent activity
-- medium: Optimization opportunities
-- low: Nice-to-haves
+Extract a BRIEF summary as source_quote when you find a commitment (max 100 chars, NO double quotes - use single quotes if needed).
 
-Suggestion types:
-- action_item: A commitment was made that needs follow-through
-- follow_up: A deal needs attention/outreach
-- stage_change: A deal should move stages
-- task_create: A task should be created
-- review_needed: Something needs review
+REQUIRED: Each suggestion MUST have ALL these fields:
+{
+  "id": "sug_1",
+  "priority": "critical" | "high" | "medium" | "low",
+  "type": "action_item" | "follow_up" | "stage_change" | "task_create" | "review_needed",
+  "title": "Short action headline (5-10 words)",
+  "description": "Why this matters and what to do",
+  "source": {
+    "type": "deal" | "note",
+    "id": "the source_id/note_id from context",
+    "name": "Company name"
+  },
+  "source_quote": "Exact quote from note if applicable",
+  "suggested_action": "What the user should do",
+  "deal_id": "deal_id if available",
+  "note_id": "note_id if from action_notes",
+  "task_name": "Suggested task name",
+  "available_actions": ["create_task", "open_deal", "view_note", "dismiss"]
+}
 
-For each suggestion include:
-- source_quote: Direct quote from note if applicable
-- deal_id: The deal ID (source_id from the context)
-- note_id: The note ID if from a note
-- task_name: Suggested task name for create_task actions
-- new_stage: Target stage for stage_change suggestions
-- available_actions: Array from ["create_task", "open_deal", "view_note", "change_stage", "go_review", "dismiss"]
-
-Respond ONLY with a JSON array. No markdown, no explanation.`
+Generate 5-8 suggestions. Output ONLY a JSON array, no markdown.`
 
 // Dedupe search results by source_id
 function dedupeResults(results: SemanticSearchResult[]): SemanticSearchResult[] {
@@ -90,6 +91,39 @@ function dedupeResults(results: SemanticSearchResult[]): SemanticSearchResult[] 
     seen.add(key)
     return true
   })
+}
+
+// Attempt to parse JSON with multiple strategies
+function parseJsonResponse(text: string): Suggestion[] {
+  // Strategy 1: Direct parse
+  try {
+    return JSON.parse(text)
+  } catch {
+    // Continue to next strategy
+  }
+
+  // Strategy 2: Extract JSON array and parse
+  const jsonMatch = text.match(/\[[\s\S]*\]/)
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0])
+    } catch {
+      // Continue to next strategy
+    }
+  }
+
+  // Strategy 3: Use jsonrepair library
+  try {
+    const json = jsonMatch?.[0] || text
+    const repaired = jsonrepair(json)
+    console.log('[SUGGESTIONS] Used jsonrepair to fix malformed JSON')
+    return JSON.parse(repaired)
+  } catch (e) {
+    // Log the failed JSON for debugging
+    console.error('[SUGGESTIONS] JSON repair failed. First 500 chars:', text.slice(0, 500))
+    console.error('[SUGGESTIONS] Parse error:', e)
+    throw new Error('Failed to parse suggestions JSON')
+  }
 }
 
 // GET - Return cached suggestions instantly
@@ -145,36 +179,54 @@ export async function POST(request: Request) {
       })
     }
 
-    console.log('[SUGGESTIONS] POST - Generating with semantic search...')
+    console.log('[SUGGESTIONS] POST - Generating with hybrid search...')
 
-    // Step 1: Parallel semantic searches + basic stats
+    // Step 1: Parallel semantic searches + action notes + stats
     const searchStart = Date.now()
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
 
     const [
       staleDealsResults,
       actionItemsResults,
       criticalPathResults,
+      actionNotesResult,
       statsResult,
       tasksResult
     ] = await Promise.all([
-      // Deals needing follow-up
+      // Semantic: Deals needing follow-up
       semanticSearch("deals that haven't been contacted recently need follow up stale inactive", {
         sourceTypes: ['deal'],
         limit: 10,
         threshold: 0.65
       }),
-      // Notes with action items
+      // Semantic: Notes with action items
       semanticSearch("action items commitments promises to send follow up next steps will send schedule reach out", {
         sourceTypes: ['note'],
         limit: 10,
         threshold: 0.65
       }),
-      // Critical path deals
+      // Semantic: Critical path deals
       semanticSearch("bridge oracle market maker liquidity provider onramp fiat chainlink wormhole layerzero", {
         sourceTypes: ['deal'],
         limit: 10,
         threshold: 0.65
       }),
+      // HYBRID: Direct query for notes with action keywords (full content)
+      // Only include notes linked to deals (partner meetings, not internal)
+      (async () => {
+        const supabase = getSupabase()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data } = await (supabase as any)
+          .from('notes')
+          .select('id, content, suggested_company, meeting_date, created_at, deal_id, deals(company)')
+          .not('deal_id', 'is', null) // Only notes linked to deals
+          .not('content', 'is', null)
+          .not('content', 'ilike', '%personal crm project%') // Exclude internal notes
+          .or('content.ilike.%will send%,content.ilike.%need to%,content.ilike.%follow up%,content.ilike.%next step%,content.ilike.%action item%,content.ilike.%committed%,content.ilike.%schedule%,content.ilike.%i will%')
+          .order('created_at', { ascending: false })
+          .limit(15) // Increased limit since we filter more
+        return data || []
+      })(),
       // Basic stats (fast query)
       (async () => {
         const supabase = getSupabase()
@@ -212,10 +264,10 @@ export async function POST(request: Request) {
       })()
     ])
 
-    timings['1_semantic_search_ms'] = Date.now() - searchStart
+    timings['1_hybrid_search_ms'] = Date.now() - searchStart
 
-    // Combine and dedupe results
-    const allResults = dedupeResults([
+    // Combine and dedupe semantic results
+    const semanticResults = dedupeResults([
       ...staleDealsResults,
       ...actionItemsResults,
       ...criticalPathResults
@@ -224,9 +276,10 @@ export async function POST(request: Request) {
     timings['1a_stale_deals'] = staleDealsResults.length
     timings['1b_action_items'] = actionItemsResults.length
     timings['1c_critical_path'] = criticalPathResults.length
-    timings['1d_total_unique'] = allResults.length
+    timings['1d_action_notes'] = actionNotesResult.length
+    timings['1e_semantic_unique'] = semanticResults.length
 
-    // Step 2: Build focused context
+    // Step 2: Build hybrid context (semantic + full content)
     const buildStart = Date.now()
 
     const focusedContext = {
@@ -237,28 +290,39 @@ export async function POST(request: Request) {
         total_tasks: tasksResult.total,
         overdue_tasks: tasksResult.overdue.length
       },
-      relevant_items: allResults.map(r => ({
+      // Semantic search results (deals and notes by relevance)
+      semantic_matches: semanticResults.map(r => ({
         source_type: r.source_type,
         source_id: r.source_id,
         content: r.content,
         metadata: r.metadata,
         relevance: r.similarity.toFixed(3)
       })),
+      // Full content notes with action keywords - for extracting quotes
+      action_notes: actionNotesResult.map((n: { id: string; content: string; suggested_company: string | null; meeting_date: string | null; created_at: string; deal_id: string | null; deals: { company: string } | null }) => ({
+        note_id: n.id,
+        deal_id: n.deal_id,
+        company: n.deals?.company || n.suggested_company || 'Unknown', // Prefer deal company
+        meeting_date: n.meeting_date,
+        created_at: n.created_at,
+        full_content: n.content?.substring(0, 500) // Include more content for quote extraction
+      })),
       overdue_tasks: tasksResult.overdue
     }
 
-    const userMessage = `Here is the current pipeline situation:\n\n${JSON.stringify(focusedContext, null, 2)}\n\nGenerate actionable suggestions based on this context.`
+    const userMessage = `Here is the current pipeline situation:\n\n${JSON.stringify(focusedContext, null, 2)}\n\nGenerate actionable suggestions. For action_notes, extract specific quotes where someone committed to doing something.`
 
     timings['2_build_prompt_ms'] = Date.now() - buildStart
     timings['2a_prompt_chars'] = userMessage.length
-    timings['2b_items_to_claude'] = allResults.length
+    timings['2b_semantic_items'] = semanticResults.length
+    timings['2c_action_notes'] = actionNotesResult.length
 
     // Step 3: Call Claude API
     const claudeStart = Date.now()
     const client = new Anthropic()
 
     const response = await client.messages.create({
-      model: 'claude-3-haiku-20240307', // Haiku for speed - 3-5x faster
+      model: 'claude-sonnet-4-20250514', // Sonnet for quality, 30min cache for speed
       max_tokens: 2048,
       messages: [
         {
@@ -280,17 +344,7 @@ export async function POST(request: Request) {
       throw new Error('No text response from Claude')
     }
 
-    let suggestions: Suggestion[]
-    try {
-      suggestions = JSON.parse(textContent.text)
-    } catch {
-      const jsonMatch = textContent.text.match(/\[[\s\S]*\]/)
-      if (jsonMatch) {
-        suggestions = JSON.parse(jsonMatch[0])
-      } else {
-        throw new Error('Failed to parse suggestions')
-      }
-    }
+    let suggestions: Suggestion[] = parseJsonResponse(textContent.text)
     timings['4_parse_response_ms'] = Date.now() - parseStart
 
     // Validate and ensure IDs and available_actions

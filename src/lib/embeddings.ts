@@ -175,23 +175,47 @@ export async function hasEmbedding(
 }
 
 /**
- * Build content string for a deal
+ * Build content string for a deal (includes associated notes for rich context)
  */
-export function buildDealContent(deal: {
+export async function buildDealContent(deal: {
+  id: string
   name: string
   company?: string | null
   stage?: string | null
   deal_type?: string | null
   source?: string | null
-}): string {
-  const parts = [
-    deal.company || deal.name,
-    deal.stage && `Stage: ${deal.stage}`,
-    deal.deal_type && `Type: ${deal.deal_type}`,
-    deal.source && `Source: ${deal.source}`,
-  ].filter(Boolean)
+}): Promise<string> {
+  const supabase = getSupabase()
 
-  return parts.join('. ')
+  // Fetch recent notes for this deal
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: notes } = await (supabase as any)
+    .from('notes')
+    .select('content, meeting_date')
+    .eq('deal_id', deal.id)
+    .not('content', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(3)
+
+  const notesContent = (notes || [])
+    .map((n: { content: string; meeting_date: string | null }) => {
+      const date = n.meeting_date ? `[${n.meeting_date}] ` : ''
+      // Truncate each note to ~1000 chars to keep embedding reasonable
+      return date + (n.content?.substring(0, 1000) || '')
+    })
+    .join('\n\n---\n\n')
+
+  const header = [
+    `Company: ${deal.company || deal.name}`,
+    `Stage: ${deal.stage || 'unknown'}`,
+    deal.deal_type && `Type: ${deal.deal_type}`,
+  ].filter(Boolean).join(' | ')
+
+  if (notesContent) {
+    return `${header}\n\nRecent Notes:\n${notesContent}`
+  }
+
+  return header
 }
 
 /**
