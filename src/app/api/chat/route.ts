@@ -327,43 +327,86 @@ const tools: Anthropic.Tool[] = [
       },
       required: ['search_terms']
     }
+  },
+  {
+    name: 'move_deals_by_company',
+    description: 'EFFICIENT: Move multiple deals to a stage by company names in ONE call. Use this instead of multiple find_deal_by_company + update_deal_stage calls. Supports fuzzy matching.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_names: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of company names (fuzzy match) to move'
+        },
+        to_stage: {
+          type: 'string',
+          enum: ['lead', 'discovery', 'evaluation', 'negotiation', 'closed_won', 'closed_lost'],
+          description: 'Target stage to move deals to'
+        },
+        confirm: {
+          type: 'boolean',
+          description: 'Set to true to execute. First call without confirm to preview matches.'
+        }
+      },
+      required: ['company_names', 'to_stage']
+    }
   }
 ]
 
 // Tool execution functions
 async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
+  // Minimal logging - timing is tracked at higher level
   try {
     switch (name) {
       case 'delete_deal': {
         const { deal_id } = input as { deal_id: string }
-        const { error } = await supabase.from('deals').delete().eq('id', deal_id)
-        if (error) return `Error deleting deal: ${error.message}`
-        return `Successfully deleted deal ${deal_id}`
+        // Use the single-deal delete API for soft delete and logging
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/${deal_id}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+        })
+        const result = await response.json()
+        if (!response.ok || result.error) {
+          console.error(`[CHAT TOOL] delete_deal failed:`, result)
+          return `Error deleting deal: ${result.error || 'Unknown error'}`
+        }
+        return `Successfully deleted deal "${result.company || deal_id}"`
       }
 
       case 'update_deal_stage': {
         const { deal_id, new_stage } = input as { deal_id: string; new_stage: string }
-        const { data, error } = await supabase
-          .from('deals')
-          .update({ stage: new_stage } as never)
-          .eq('id', deal_id)
-          .select('company')
-          .single()
-        if (error) return `Error updating deal: ${error.message}`
-        const dealData = data as { company: string } | null
-        return `Successfully moved "${dealData?.company}" to ${new_stage}`
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: [deal_id], updates: { stage: new_stage }, triggeredBy: 'chat' }),
+        })
+        const result = await response.json()
+        if (result.error) return `Error updating deal: ${result.error}`
+        const companyName = result.companies?.[0] || 'Unknown'
+        return `Successfully moved "${companyName}" to ${new_stage}`
       }
 
       case 'bulk_update_stage': {
         const { from_stage, to_stage } = input as { from_stage: string; to_stage: string }
-        const { data, error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: dealsInStage, error: queryError } = await (supabase as any)
           .from('deals')
-          .update({ stage: to_stage } as never)
-          .eq('stage', from_stage)
           .select('id')
-        if (error) return `Error updating deals: ${error.message}`
-        const deals = data as { id: string }[] | null
-        return `Successfully moved ${deals?.length || 0} deals from ${from_stage} to ${to_stage}`
+          .eq('stage', from_stage)
+          .is('deleted_at', null)
+        if (queryError) return `Error querying deals: ${queryError.message}`
+        const ids = (dealsInStage || []).map((d: { id: string }) => d.id)
+        if (ids.length === 0) return `No deals found in ${from_stage} stage`
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, updates: { stage: to_stage }, triggeredBy: 'chat' }),
+        })
+        const result = await response.json()
+        if (result.error) return `Error updating deals: ${result.error}`
+        return `Successfully moved ${result.updated} deals from ${from_stage} to ${to_stage}`
       }
 
       case 'create_deal': {
@@ -389,23 +432,39 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
       case 'delete_deals_by_stage': {
         const { stage, confirmed } = input as { stage: string; confirmed?: boolean }
+        // Get non-deleted deals in this stage
+        const { data: dealsInStage } = await supabase
+          .from('deals')
+          .select('id')
+          .eq('stage', stage)
+          .is('deleted_at', null)
+        const ids = (dealsInStage || []).map((d: { id: string }) => d.id)
+
         if (!confirmed) {
-          // Count deals first
-          const { data: deals } = await supabase.from('deals').select('id').eq('stage', stage)
-          const count = deals?.length || 0
-          return `CONFIRMATION REQUIRED: This will delete ${count} deals in the "${stage}" stage. This action cannot be undone. Please confirm by saying "yes, delete all ${stage} deals" or "confirm deletion".`
+          return `CONFIRMATION REQUIRED: This will delete ${ids.length} deals in the "${stage}" stage. Please confirm by saying "yes, delete all ${stage} deals" or "confirm deletion".`
         }
-        const { data, error } = await supabase.from('deals').delete().eq('stage', stage).select('id')
-        if (error) return `Error deleting deals: ${error.message}`
-        return `Successfully deleted ${data?.length || 0} deals from ${stage} stage`
+
+        if (ids.length === 0) return `No deals found in ${stage} stage`
+
+        // Use bulk-delete API for soft delete and logging
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, triggeredBy: 'chat' }),
+        })
+        const result = await response.json()
+        if (result.error) return `Error deleting deals: ${result.error}`
+        return `Successfully deleted ${result.deleted} deals from ${stage} stage`
       }
 
       case 'find_deal_by_company': {
         const { company_name } = input as { company_name: string }
-        const { data, error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any)
           .from('deals')
           .select('id, company, name, stage')
           .ilike('company', `%${company_name}%`)
+          .is('deleted_at', null)
           .limit(5)
         if (error) return `Error searching deals: ${error.message}`
         const deals = data as { id: string; company: string; name: string; stage: string }[] | null
@@ -429,11 +488,13 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
       case 'add_note_by_company': {
         const { company_name, content, meeting_date } = input as { company_name: string; content: string; meeting_date?: string }
-        // Find the deal first
-        const { data: dealsData } = await supabase
+        // Find the deal first (only non-deleted deals)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: dealsData } = await (supabase as any)
           .from('deals')
           .select('id, company')
           .ilike('company', `%${company_name}%`)
+          .is('deleted_at', null)
           .limit(1)
         const matchedDeals = dealsData as { id: string; company: string }[] | null
         if (!matchedDeals?.length) return `No deal found matching "${company_name}"`
@@ -534,10 +595,12 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
       case 'get_deals_by_stage': {
         const { stage } = input as { stage: string }
-        const { data, error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any)
           .from('deals')
           .select('id, company, name')
           .eq('stage', stage)
+          .is('deleted_at', null)
           .order('company')
         if (error) return `Error: ${error.message}`
         const deals = data as { id: string; company: string; name: string }[] | null
@@ -546,7 +609,8 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
 
       case 'get_stage_counts': {
-        const { data, error } = await supabase.from('deals').select('stage')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any).from('deals').select('stage').is('deleted_at', null)
         if (error) return `Error: ${error.message}`
         const deals = data as { stage: string }[] | null
         const counts: Record<string, number> = {}
@@ -624,13 +688,11 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           return `CONFIRMATION REQUIRED: This will update ${ids.length} deal(s) with: ${updateFields}. Please ask the user to confirm.`
         }
 
-        // Call the bulk-update API endpoint
         const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids, updates }),
+          body: JSON.stringify({ ids, updates, triggeredBy: 'chat' }),
         })
-
         const result = await response.json()
         if (result.error) return `Error updating deals: ${result.error}`
 
@@ -844,6 +906,61 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         return `Successfully deleted ${result.deleted} deal(s):\n${result.companies.map((c: string) => `- ${c}`).join('\n')}`
       }
 
+      case 'move_deals_by_company': {
+        const { company_names, to_stage, confirm } = input as { company_names: string[]; to_stage: string; confirm?: boolean }
+
+        // Find all matching deals with fuzzy match on each company name
+        const matches: { id: string; company: string; stage: string }[] = []
+        for (const name of company_names) {
+          const { data, error } = await (supabase as any)
+            .from('deals')
+            .select('id, company, stage')
+            .ilike('company', `%${name}%`)
+            .is('deleted_at', null)
+          if (error) {
+            console.error(`[MOVE] Error finding deals for "${name}":`, error)
+          }
+          if (data) matches.push(...data)
+        }
+
+        // Dedupe by ID
+        const uniqueDeals = Array.from(new Map(matches.map(d => [d.id, d])).values())
+
+        if (uniqueDeals.length === 0) {
+          return `No deals found matching: ${company_names.join(', ')}`
+        }
+
+        if (!confirm) {
+          return `Found ${uniqueDeals.length} deal(s) to move to ${to_stage}:\n${uniqueDeals.map(d => `- ${d.company} (currently: ${d.stage})`).join('\n')}\n\nCall again with confirm=true to execute.`
+        }
+
+        // Execute the move via bulk-update API
+        const ids = uniqueDeals.map(d => d.id)
+        console.log(`[MOVE] Moving ${ids.length} deals to ${to_stage}:`, ids)
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, updates: { stage: to_stage }, triggeredBy: 'chat' }),
+        })
+
+        console.log(`[MOVE] bulk-update response status: ${response.status}`)
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error(`[MOVE] bulk-update failed:`, errorText)
+          return `Error: API returned ${response.status}: ${errorText}`
+        }
+
+        const result = await response.json()
+        console.log(`[MOVE] bulk-update result:`, result)
+
+        if (result.error) return `Error: ${result.error}`
+        if (!result.success) return `Error: Update failed - ${result.message || 'unknown reason'}`
+
+        return `Moved ${result.updated} deal(s) to ${to_stage}:\n${(result.companies || []).map((c: string) => `- ${c}`).join('\n')}`
+      }
+
       default:
         return `Unknown tool: ${name}`
     }
@@ -914,13 +1031,22 @@ export async function POST(request: NextRequest) {
 
           let continueLoop = true
 
-          while (continueLoop) {
+          let loopCount = 0
+          const MAX_TOOL_LOOPS = 10  // Safety limit to prevent infinite loops
+          const chatStartTime = Date.now()
+
+          while (continueLoop && loopCount < MAX_TOOL_LOOPS) {
+            loopCount++
+            const loopStartTime = Date.now()
+            console.log(`[CHAT] Loop ${loopCount}/${MAX_TOOL_LOOPS}, messages: ${processedMessages.length}`)
+
             // Use streaming API
             const stream = anthropic.messages.stream({
               model: 'claude-sonnet-4-20250514',
               max_tokens: 1024,
               system: systemPrompt,
               tools,
+              tool_choice: { type: 'auto' },  // Auto: model decides when to use tools
               messages: processedMessages,
             })
 
@@ -974,6 +1100,8 @@ export async function POST(request: NextRequest) {
 
             // Get final message to check stop reason
             const finalMessage = await stream.finalMessage()
+            const apiTime = Date.now() - loopStartTime
+            console.log(`[CHAT] Response stop_reason: ${finalMessage.stop_reason} (API took ${apiTime}ms)`)
 
             // Add any text blocks to collected content
             for (const block of finalMessage.content) {
@@ -987,10 +1115,14 @@ export async function POST(request: NextRequest) {
               const toolUseBlocks = collectedContent.filter(
                 (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
               )
+              console.log(`[CHAT] Found ${toolUseBlocks.length} tool calls:`, toolUseBlocks.map(t => t.name))
 
               const toolResults: Anthropic.ToolResultBlockParam[] = []
+              const toolStartTime = Date.now()
               for (const toolUse of toolUseBlocks) {
+                const toolExecStart = Date.now()
                 const result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>)
+                console.log(`[CHAT] Tool ${toolUse.name} took ${Date.now() - toolExecStart}ms`)
                 toolResults.push({
                   type: 'tool_result',
                   tool_use_id: toolUse.id,
@@ -1010,11 +1142,18 @@ export async function POST(request: NextRequest) {
                 content: toolResults,
               })
 
+              console.log(`[CHAT] Tools total: ${Date.now() - toolStartTime}ms`)
               // Continue loop to stream the next response
             } else {
               // No more tool calls, we're done
               continueLoop = false
+              console.log(`[CHAT] Complete in ${loopCount} loops, total time: ${Date.now() - chatStartTime}ms`)
             }
+          }
+
+          if (loopCount >= MAX_TOOL_LOOPS) {
+            console.warn(`[CHAT] Hit max tool loop limit (${MAX_TOOL_LOOPS})`)
+            controller.enqueue(encoder.encode('\n\n[Stopped: too many tool calls]'))
           }
 
           controller.close()

@@ -17,8 +17,11 @@ const SECTION_COLORS: Record<string, string> = {
 
 const REFRESH_INTERVAL = 30000
 
+type StatusFilter = 'all' | 'incomplete' | 'completed'
+
 interface TaskBoardProps {
   initialData: GroupedTasks[]
+  statusFilter?: StatusFilter
 }
 
 function getInitials(name: string): string {
@@ -114,7 +117,7 @@ function SectionColumn({ section, tasks, onTaskClick }: SectionColumnProps) {
   )
 }
 
-export function TaskBoard({ initialData }: TaskBoardProps) {
+export function TaskBoard({ initialData, statusFilter: _statusFilter }: TaskBoardProps) {
   const [data, setData] = useState(initialData)
   const [selectedTask, setSelectedTask] = useState<AsanaTask | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -122,6 +125,11 @@ export function TaskBoard({ initialData }: TaskBoardProps) {
   const [lastUpdated, setLastUpdated] = useState(Date.now())
   const [lastUpdatedText, setLastUpdatedText] = useState('Just now')
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Sync data when initialData prop changes (e.g., from filtering)
+  useEffect(() => {
+    setData(initialData)
+  }, [initialData])
 
   const fetchTasks = useCallback(async (isManual = false) => {
     if (isRefreshing && !isManual) return
@@ -288,6 +296,16 @@ export function TaskBoard({ initialData }: TaskBoardProps) {
     }
   }, [selectedTask])
 
+  const handleTaskDelete = useCallback((gid: string) => {
+    setData(prev =>
+      prev.map(group => ({
+        ...group,
+        tasks: group.tasks.filter(task => task.gid !== gid),
+      }))
+    )
+    setSelectedTask(null)
+  }, [])
+
   return (
     <div className={`task-board ${isUpdating ? 'updating' : ''}`}>
       <div className="task-list-toolbar">
@@ -325,6 +343,7 @@ export function TaskBoard({ initialData }: TaskBoardProps) {
           task={selectedTask}
           onClose={handleCloseModal}
           onUpdate={handleTaskUpdate}
+          onDelete={handleTaskDelete}
         />
       )}
     </div>

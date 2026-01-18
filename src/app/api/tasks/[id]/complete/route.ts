@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { completeTask } from '@/lib/asana'
+import { logTaskCompletion } from '@/lib/activityLog'
 
 export async function POST(
   request: NextRequest,
@@ -7,11 +8,15 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const { completed } = await request.json()
+    const { completed, taskName } = await request.json()
 
     const success = await completeTask(id, completed)
 
     if (success) {
+      // Log completion if we have the task name
+      if (taskName) {
+        await logTaskCompletion(taskName, completed)
+      }
       return NextResponse.json({ success: true })
     } else {
       return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })

@@ -11,6 +11,7 @@ export async function GET() {
     const { data: deals, error } = await (supabase as any)
       .from('deals')
       .select('id, name, company, stage')
+      .is('deleted_at', null)
       .order('company', { ascending: true })
 
     if (error) {

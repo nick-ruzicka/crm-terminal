@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getRecentActivityLogs } from '@/lib/activityLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,11 +13,19 @@ function getSupabase() {
 
 export interface ActivityItem {
   id: string
-  type: 'deal_updated' | 'deal_created' | 'note_added' | 'task_completed' | 'task_created'
+  type: 'deal_updated' | 'deal_created' | 'deal_deleted' | 'deal_restored' | 'bulk_delete' | 'bulk_stage_change' | 'note_added' | 'task_completed' | 'task_created' | 'task_deleted'
   title: string
   subtitle: string
   timestamp: string
   updated_at: string
+  metadata?: {
+    count?: number
+    companies?: string[]
+    to_stage?: string
+    from_stages?: string[]
+    search_query?: string
+    triggered_by?: string
+  }
 }
 
 export async function GET() {
@@ -45,22 +54,28 @@ export async function GET() {
       })
     }
 
-    // Fetch recent notes
+    // Fetch recent notes (join with deals to get company name)
     const { data: notes } = await supabase
       .from('notes')
-      .select('id, title, meeting_date, updated_at, created_at')
-      .order('updated_at', { ascending: false })
+      .select('id, content, suggested_company, meeting_date, created_at, deal_id, deals(company)')
+      .order('created_at', { ascending: false })
       .limit(10)
 
     if (notes) {
-      notes.forEach(note => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      notes.forEach((note: any) => {
+        // Get title from deal company, suggested_company, or first 30 chars of content
+        // deals can be an object or array depending on Supabase query
+        const dealCompany = Array.isArray(note.deals) ? note.deals[0]?.company : note.deals?.company
+        const noteTitle = dealCompany || note.suggested_company ||
+          (note.content ? note.content.slice(0, 30) + (note.content.length > 30 ? '...' : '') : 'Untitled Note')
         activities.push({
           id: `note-${note.id}`,
           type: 'note_added',
-          title: note.title || 'Untitled Note',
+          title: noteTitle,
           subtitle: 'Note',
-          timestamp: note.updated_at || note.created_at,
-          updated_at: note.updated_at || note.created_at,
+          timestamp: note.created_at,
+          updated_at: note.created_at,
         })
       })
     }
@@ -94,10 +109,107 @@ export async function GET() {
       console.error('Failed to fetch tasks for activity:', e)
     }
 
+    // Fetch recent activity logs (deletions, bulk actions, etc.)
+    try {
+      const activityLogs = await getRecentActivityLogs(15)
+      console.log('[ACTIVITY] Activity logs fetched:', activityLogs.length)
+      activityLogs.forEach(log => {
+        const metadata = log.metadata as Record<string, unknown> | undefined
+
+        if (log.type === 'deal_deleted') {
+          activities.push({
+            id: log.id,
+            type: 'deal_deleted',
+            title: log.title,
+            subtitle: 'Deleted',
+            timestamp: log.created_at,
+            updated_at: log.created_at,
+          })
+        } else if (log.type === 'deal_restored') {
+          activities.push({
+            id: log.id,
+            type: 'deal_restored',
+            title: log.title,
+            subtitle: 'Restored',
+            timestamp: log.created_at,
+            updated_at: log.created_at,
+          })
+        } else if (log.type === 'bulk_delete') {
+          activities.push({
+            id: log.id,
+            type: 'bulk_delete',
+            title: log.title,
+            subtitle: 'Bulk Delete',
+            timestamp: log.created_at,
+            updated_at: log.created_at,
+            metadata: {
+              count: metadata?.count as number,
+              companies: metadata?.companies as string[],
+              search_query: metadata?.search_query as string,
+              triggered_by: metadata?.triggered_by as string,
+            },
+          })
+        } else if (log.type === 'bulk_stage_change') {
+          activities.push({
+            id: log.id,
+            type: 'bulk_stage_change',
+            title: log.title,
+            subtitle: 'Bulk Update',
+            timestamp: log.created_at,
+            updated_at: log.created_at,
+            metadata: {
+              count: metadata?.count as number,
+              companies: metadata?.companies as string[],
+              to_stage: metadata?.to_stage as string,
+              from_stages: metadata?.from_stages as string[],
+              triggered_by: metadata?.triggered_by as string,
+            },
+          })
+        } else if (log.type === 'task_completed') {
+          activities.push({
+            id: log.id,
+            type: 'task_completed',
+            title: log.title,
+            subtitle: (metadata?.completed as boolean) ? 'Completed' : 'Reopened',
+            timestamp: log.created_at,
+            updated_at: log.created_at,
+          })
+        } else if (log.type === 'task_deleted') {
+          activities.push({
+            id: log.id,
+            type: 'task_deleted',
+            title: log.title,
+            subtitle: 'Deleted',
+            timestamp: log.created_at,
+            updated_at: log.created_at,
+          })
+        } else if (log.type === 'task_created') {
+          activities.push({
+            id: log.id,
+            type: 'task_created',
+            title: log.title,
+            subtitle: 'Created',
+            timestamp: log.created_at,
+            updated_at: log.created_at,
+          })
+        }
+      })
+    } catch (e) {
+      console.error('Failed to fetch activity logs:', e)
+    }
+
     // Sort all activities by updated_at descending
+    // Normalize timestamps: if no timezone, assume UTC (append Z)
+    const normalizeTimestamp = (ts: string) => {
+      if (!ts) return 0
+      // If timestamp doesn't have timezone info, treat as UTC
+      const normalized = ts.includes('+') || ts.includes('Z') ? ts : ts + 'Z'
+      return new Date(normalized).getTime()
+    }
+
     activities.sort((a, b) => {
-      const dateA = new Date(a.updated_at).getTime()
-      const dateB = new Date(b.updated_at).getTime()
+      const dateA = normalizeTimestamp(a.updated_at)
+      const dateB = normalizeTimestamp(b.updated_at)
       return dateB - dateA
     })
 

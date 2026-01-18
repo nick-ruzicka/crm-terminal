@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
+import { logBulkDeletion } from '@/lib/activityLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,11 +20,12 @@ export async function POST(request: NextRequest) {
     // Normalize company names to lowercase for matching
     const normalizedNames = companies.map((c: string) => c.toLowerCase().trim())
 
-    // First, find matching deals
+    // Find matching non-deleted deals
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: matchingDeals, error: findError } = await (supabase as any)
       .from('deals')
       .select('id, company')
+      .is('deleted_at', null)
 
     if (findError) {
       console.error('[DELETE BY COMPANIES] Find error:', findError)
@@ -57,13 +59,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Delete the matching deals
+    // Soft delete the matching deals
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const idsToDelete = dealsToDelete.map((d: any) => d.id)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: deleteError } = await (supabase as any)
       .from('deals')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .in('id', idsToDelete)
 
     if (deleteError) {
@@ -73,7 +75,12 @@ export async function POST(request: NextRequest) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const deletedCompanies = dealsToDelete.map((d: any) => d.company)
-    console.log(`[DELETE BY COMPANIES] Deleted ${dealsToDelete.length} deals: ${deletedCompanies.join(', ')}`)
+    console.log(`[DELETE BY COMPANIES] Soft deleted ${dealsToDelete.length} deals: ${deletedCompanies.join(', ')}`)
+
+    // Log bulk deletion to activity log
+    await logBulkDeletion(idsToDelete, deletedCompanies, {
+      triggeredBy: 'chat'
+    })
 
     return NextResponse.json({
       deleted: dealsToDelete.length,

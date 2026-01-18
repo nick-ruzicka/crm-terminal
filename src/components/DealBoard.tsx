@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import type { Deal } from '@/types/database'
 import { getDealDueDateStatus, formatDueDate } from '@/lib/dateUtils'
@@ -91,6 +91,11 @@ function StageColumn({ stage, deals, onDealClick }: StageColumnProps) {
 export function DealBoard({ initialDeals, onDealClick }: DealBoardProps) {
   const [deals, setDeals] = useState(initialDeals)
   const [isUpdating, setIsUpdating] = useState(false)
+
+  // Sync deals when initialDeals prop changes (e.g., from filtering)
+  useEffect(() => {
+    setDeals(initialDeals)
+  }, [initialDeals])
 
   const dealsByStage = STAGES_WITH_COLORS.reduce((acc, stage) => {
     acc[stage.id] = deals.filter(d => d.stage === stage.id)

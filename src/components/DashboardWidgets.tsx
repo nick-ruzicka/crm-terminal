@@ -165,7 +165,7 @@ export function TasksDueTodayWidget({ tasks }: { tasks: TaskDueToday[] }) {
 // Activity Feed Widget
 interface ActivityItem {
   id: string
-  type: 'deal_moved' | 'deal_created' | 'task_completed' | 'note_added'
+  type: 'deal_moved' | 'deal_created' | 'deal_updated' | 'deal_deleted' | 'deal_restored' | 'bulk_delete' | 'bulk_stage_change' | 'task_completed' | 'task_created' | 'task_deleted' | 'note_added'
   title: string
   subtitle: string
   timestamp: string
@@ -175,15 +175,37 @@ export function ActivityFeedWidget({ activities }: { activities: ActivityItem[] 
   const getIcon = (type: ActivityItem['type']) => {
     switch (type) {
       case 'deal_moved':
+      case 'bulk_stage_change':
         return (
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3 7h8M8 4l3 3-3 3" />
           </svg>
         )
       case 'deal_created':
+      case 'task_created':
         return (
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M7 3v8M3 7h8" />
+          </svg>
+        )
+      case 'deal_updated':
+        return (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M10 4L4 10M4 4h6v6" />
+          </svg>
+        )
+      case 'deal_deleted':
+      case 'task_deleted':
+      case 'bulk_delete':
+        return (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M2 4h10M4 4v7a1 1 0 001 1h4a1 1 0 001-1V4M6 7v3M8 7v3M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1" />
+          </svg>
+        )
+      case 'deal_restored':
+        return (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M2 7a5 5 0 019.9-.5M12 3v3.5H8.5M12 7a5 5 0 01-9.9.5M2 11V7.5h3.5" />
           </svg>
         )
       case 'task_completed':
@@ -203,10 +225,26 @@ export function ActivityFeedWidget({ activities }: { activities: ActivityItem[] 
 
   const getColor = (type: ActivityItem['type']) => {
     switch (type) {
-      case 'deal_moved': return 'accent'
-      case 'deal_created': return 'success'
-      case 'task_completed': return 'success'
-      case 'note_added': return 'muted'
+      case 'deal_moved':
+      case 'bulk_stage_change':
+        return 'accent'
+      case 'deal_created':
+      case 'task_created':
+        return 'success'
+      case 'deal_updated':
+        return 'accent'
+      case 'task_completed':
+        return 'success'
+      case 'deal_deleted':
+      case 'task_deleted':
+      case 'bulk_delete':
+        return 'danger'
+      case 'deal_restored':
+        return 'success'
+      case 'note_added':
+        return 'muted'
+      default:
+        return 'muted'
     }
   }
 

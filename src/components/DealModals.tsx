@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { Deal, Contact, Note } from '@/types/database'
 import { useToast } from './Toast'
 import { restoreMarkdownFormatting } from '@/lib/markdown'
@@ -223,6 +224,10 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
   const [loading, setLoading] = useState(true)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showAddNote, setShowAddNote] = useState(false)
+  const [noteContent, setNoteContent] = useState('')
+  const [noteMeetingDate, setNoteMeetingDate] = useState('')
+  const [isSubmittingNote, setIsSubmittingNote] = useState(false)
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -292,6 +297,37 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
   const formatStageName = (stage: string | null) => {
     if (!stage) return 'Unknown'
     return stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  }
+
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!noteContent.trim()) return
+
+    setIsSubmittingNote(true)
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deal_id: deal.id,
+          content: noteContent.trim(),
+          meeting_date: noteMeetingDate || new Date().toISOString()
+        })
+      })
+
+      if (!res.ok) throw new Error('Failed to create note')
+
+      const newNote = await res.json()
+      setNotes(prev => [newNote, ...prev])
+      setNoteContent('')
+      setNoteMeetingDate('')
+      setShowAddNote(false)
+      addToast('success', 'Note Added', 'Your note has been saved')
+    } catch {
+      addToast('error', 'Error', 'Failed to add note')
+    } finally {
+      setIsSubmittingNote(false)
+    }
   }
 
   return (
@@ -383,10 +419,27 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
           </div>
 
           <div className="drawer-section">
-            <h3 className="section-label">
-              Notes
-              <span className="section-count">{notes.length}</span>
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 className="section-label">
+                Notes
+                <span className="section-count">{notes.length}</span>
+              </h3>
+              <button
+                onClick={() => setShowAddNote(true)}
+                style={{
+                  padding: '6px 12px',
+                  background: '#6366f1',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  cursor: 'pointer'
+                }}
+              >
+                + Add Note
+              </button>
+            </div>
             {loading ? (
               <div className="loading-text">Loading...</div>
             ) : notes.length > 0 ? (
@@ -395,7 +448,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                   <div key={note.id} className="note-item">
                     <div className="note-date">{formatDate(note.meeting_date)}</div>
                     <div className="markdown-content compact">
-                      <ReactMarkdown>{restoreMarkdownFormatting(note.content || '')}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{restoreMarkdownFormatting(note.content || '')}</ReactMarkdown>
                     </div>
                   </div>
                 ))}
@@ -431,6 +484,67 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
             onClose={() => setIsEditing(false)}
             onSaved={onUpdate}
           />
+        )}
+
+        {/* Add Note Modal */}
+        {showAddNote && (
+          <div className="modal-overlay centered" onClick={() => setShowAddNote(false)}>
+            <div className="modal-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+              <div className="modal-dialog-header">
+                <h2>Add Note</h2>
+                <button className="modal-close" onClick={() => setShowAddNote(false)}>
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path d="M6 6L14 14M14 6L6 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+
+              <form onSubmit={handleAddNote}>
+                <div className="modal-dialog-body">
+                  <div className="form-group">
+                    <label htmlFor="note-content">Note Content</label>
+                    <textarea
+                      id="note-content"
+                      value={noteContent}
+                      onChange={e => setNoteContent(e.target.value)}
+                      placeholder="Enter your note..."
+                      rows={6}
+                      autoFocus
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: '8px',
+                        background: 'var(--bg-tertiary)',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="note-date">Meeting Date (optional)</label>
+                    <input
+                      id="note-date"
+                      type="date"
+                      value={noteMeetingDate}
+                      onChange={e => setNoteMeetingDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-dialog-footer">
+                  <button type="button" className="btn-secondary" onClick={() => setShowAddNote(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary" disabled={isSubmittingNote || !noteContent.trim()}>
+                    {isSubmittingNote ? 'Saving...' : 'Save Note'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
       </div>
     </div>

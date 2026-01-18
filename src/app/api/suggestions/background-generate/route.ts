@@ -60,6 +60,13 @@ IMPORTANT:
 - Focus on NEW actionable items not already tracked
 - For items shown 5+ times without action, suggest escalation
 
+CRITICAL EXCLUSIONS:
+- NEVER suggest internal team coordination, 1:1s, or sync meetings
+- NEVER suggest actions involving Linera team members (Mathieu, Bernadette, etc.)
+- ONLY suggest actions for EXTERNAL partners and deals
+- Skip any notes that are internal project notes or personal CRM notes
+- If a company name is "Linera" or "Unknown", do NOT create a suggestion for it
+
 REQUIRED: Each suggestion MUST have ALL these fields:
 {
   "priority": "critical" | "high" | "medium" | "low",
@@ -79,6 +86,9 @@ REQUIRED: Each suggestion MUST have ALL these fields:
 }
 
 Generate 5-8 NEW suggestions. Output ONLY a JSON array, no markdown.`
+
+// Internal names/companies to filter out
+const INTERNAL_FILTERS = ['linera', 'bernadette', 'mathieu', 'internal', 'unknown', 'personal crm']
 
 // Dedupe search results by source_id
 function dedupeResults(results: SemanticSearchResult[]): SemanticSearchResult[] {
@@ -272,6 +282,12 @@ export async function POST(request: Request) {
       overdue_tasks: tasksResult.overdue
     }
 
+    // Log which notes are being sent to Claude
+    console.log(`[BG-SUGGESTIONS] Sending ${focusedContext.action_notes.length} action_notes to Claude:`)
+    focusedContext.action_notes.forEach((n: { company: string; note_id: string }) => {
+      console.log(`  - ${n.company} (${n.note_id})`)
+    })
+
     const userMessage = `Here is the current pipeline situation:\n\n${JSON.stringify(focusedContext, null, 2)}\n\nGenerate NEW actionable suggestions that are not already tracked. Focus on items from action_notes.`
 
     // Step 4: Call Claude
@@ -288,13 +304,28 @@ export async function POST(request: Request) {
       throw new Error('No text response from Claude')
     }
 
-    const suggestions = parseJsonResponse(textContent.text)
+    const rawSuggestions = parseJsonResponse(textContent.text)
 
-    // Step 5: Filter out duplicates and insert new suggestions
-    const newSuggestions = suggestions.filter(s => {
+    // Step 5: Filter out duplicates AND internal suggestions
+    const isInternalSuggestion = (s: GeneratedSuggestion): boolean => {
+      const checkText = `${s.title} ${s.source.name} ${s.description}`.toLowerCase()
+      return INTERNAL_FILTERS.some(filter => checkText.includes(filter))
+    }
+
+    const newSuggestions = rawSuggestions.filter(s => {
       const key = `${s.source.type}:${s.source.id}`
-      return !existingSourceIds.has(key)
+      if (existingSourceIds.has(key)) {
+        console.log(`[BG-SUGGESTIONS] Skipping duplicate: ${s.title}`)
+        return false
+      }
+      if (isInternalSuggestion(s)) {
+        console.log(`[BG-SUGGESTIONS] Filtering internal suggestion: ${s.title} (${s.source.name})`)
+        return false
+      }
+      return true
     })
+
+    console.log(`[BG-SUGGESTIONS] Claude returned ${rawSuggestions.length}, filtered to ${newSuggestions.length}`)
 
     if (newSuggestions.length > 0) {
       const rows = newSuggestions.map(s => ({

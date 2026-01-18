@@ -58,6 +58,7 @@ export async function POST() {
     const { data: deals, error } = await supabase
       .from('deals')
       .select('id, name, company, stage, deal_type, source, updated_at, created_at')
+      .is('deleted_at', null)
       .order('updated_at', { ascending: false })
 
     if (error) {

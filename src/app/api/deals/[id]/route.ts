@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { logDealDeletion } from '@/lib/activityLog'
 
 export async function GET(
   request: NextRequest,
@@ -13,9 +14,10 @@ export async function GET(
       .from('deals')
       .select('*')
       .eq('id', id)
+      .is('deleted_at', null)
       .single()
 
-    if (error) {
+    if (error || !deal) {
       console.error('Error fetching deal:', error)
       return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
     }
@@ -98,20 +100,92 @@ export async function DELETE(
   try {
     const { id } = await params
 
+    // Fetch deal name before soft deleting for activity log
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: deal } = await (supabase as any)
+      .from('deals')
+      .select('company, name')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single()
+
+    if (!deal) {
+      return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
+    }
+
+    const dealName = deal?.company || deal?.name || 'Unknown'
+
+    // Soft delete: set deleted_at timestamp instead of hard delete
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any)
       .from('deals')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)
 
     if (error) {
-      console.error('Error deleting deal:', error)
+      console.error('Error soft deleting deal:', error)
       return NextResponse.json({ error: 'Failed to delete deal' }, { status: 500 })
     }
+
+    // Log deletion to activity log
+    await logDealDeletion(dealName, { deal_id: id })
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error in DELETE /api/deals/[id]:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const body = await request.json()
+
+    // Handle restore action
+    if (body.restore === true) {
+      // Fetch deal info (including deleted ones)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: deal } = await (supabase as any)
+        .from('deals')
+        .select('company, name, deleted_at')
+        .eq('id', id)
+        .single()
+
+      if (!deal) {
+        return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
+      }
+
+      if (!deal.deleted_at) {
+        return NextResponse.json({ error: 'Deal is not deleted' }, { status: 400 })
+      }
+
+      const dealName = deal?.company || deal?.name || 'Unknown'
+
+      // Restore: set deleted_at to null
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from('deals')
+        .update({ deleted_at: null, updated_at: new Date().toISOString() })
+        .eq('id', id)
+
+      if (error) {
+        console.error('Error restoring deal:', error)
+        return NextResponse.json({ error: 'Failed to restore deal' }, { status: 500 })
+      }
+
+      // Log restoration to activity log
+      await logDealDeletion(dealName, { deal_id: id, restored: true })
+
+      return NextResponse.json({ success: true, restored: true })
+    }
+
+    return NextResponse.json({ error: 'Invalid PATCH request' }, { status: 400 })
+  } catch (error) {
+    console.error('Error in PATCH /api/deals/[id]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

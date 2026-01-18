@@ -19,7 +19,7 @@ export function Nav() {
     <nav className="nav">
       <div className="container nav-content">
         <Link href="/" className="nav-logo">
-          CRM Terminal
+          Dispatch
         </Link>
         <div className="nav-links">
           <Link

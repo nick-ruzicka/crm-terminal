@@ -1,6 +1,7 @@
 'use client'
 
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { restoreMarkdownFormatting } from '@/lib/markdown'
 
 interface MarkdownContentProps {
@@ -11,7 +12,9 @@ interface MarkdownContentProps {
 export function MarkdownContent({ content, compact = false }: MarkdownContentProps) {
   return (
     <div className={`markdown-content${compact ? ' compact' : ''}`}>
-      <ReactMarkdown>{restoreMarkdownFormatting(content)}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {restoreMarkdownFormatting(content)}
+      </ReactMarkdown>
     </div>
   )
 }

@@ -18,11 +18,12 @@ export async function POST(request: Request) {
       )
     }
 
-    // Start query
+    // Start query - only non-deleted deals
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let query = (supabase as any)
       .from('deals')
       .select('id, name, company, stage, deal_type, created_at, updated_at')
+      .is('deleted_at', null)
 
     // Apply filters
     if (filters.stage) {

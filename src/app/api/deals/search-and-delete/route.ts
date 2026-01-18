@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
+import { logBulkDeletion } from '@/lib/activityLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,11 +23,12 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabase()
 
-    // Get all deals
+    // Get all non-deleted deals
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: allDeals, error: fetchError } = await (supabase as any)
       .from('deals')
       .select('id, company')
+      .is('deleted_at', null)
 
     if (fetchError) {
       console.error('[SEARCH AND DELETE] Fetch error:', fetchError)
@@ -89,12 +91,12 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Delete the matching deals
+    // Soft delete the matching deals
     const idsToDelete = matches.map(m => m.id)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: deleteError } = await (supabase as any)
       .from('deals')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .in('id', idsToDelete)
 
     if (deleteError) {
@@ -103,7 +105,13 @@ export async function POST(request: NextRequest) {
     }
 
     const deletedCompanies = matches.map(m => m.company)
-    console.log(`[SEARCH AND DELETE] Deleted ${matches.length} deals: ${deletedCompanies.join(', ')}`)
+    console.log(`[SEARCH AND DELETE] Soft deleted ${matches.length} deals: ${deletedCompanies.join(', ')}`)
+
+    // Log bulk deletion to activity log with search query
+    await logBulkDeletion(idsToDelete, deletedCompanies, {
+      searchQuery: search_terms.join(', '),
+      triggeredBy: 'chat'
+    })
 
     return NextResponse.json({
       deleted: matches.length,

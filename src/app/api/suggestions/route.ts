@@ -26,6 +26,9 @@ export interface SuggestionResponse {
   created_at: string
 }
 
+// Internal names/companies to filter out
+const INTERNAL_FILTERS = ['linera', 'bernadette', 'mathieu', 'internal', 'unknown']
+
 // GET - Return active suggestions from database
 export async function GET() {
   const supabase = getSupabase()
@@ -43,8 +46,8 @@ export async function GET() {
 
     if (error) throw error
 
-    // Transform to frontend format
-    const suggestions: SuggestionResponse[] = (data || []).map((row: {
+    // Transform to frontend format and filter out internal suggestions
+    const allSuggestions: SuggestionResponse[] = (data || []).map((row: {
       id: string
       title: string
       description: string | null
@@ -75,6 +78,16 @@ export async function GET() {
       escalated_at: row.escalated_at,
       created_at: row.created_at
     }))
+
+    // Filter out any internal suggestions that slipped through
+    const suggestions = allSuggestions.filter(s => {
+      const checkText = `${s.title} ${s.source.name} ${s.description || ''}`.toLowerCase()
+      const isInternal = INTERNAL_FILTERS.some(filter => checkText.includes(filter))
+      if (isInternal) {
+        console.log(`[SUGGESTIONS] Filtering internal: ${s.title} (${s.source.name})`)
+      }
+      return !isInternal
+    })
 
     // Update last_shown_at for all returned suggestions
     if (suggestions.length > 0) {

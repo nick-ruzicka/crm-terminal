@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useToast } from '@/components/Toast'
 
 interface Message {
@@ -415,7 +416,7 @@ export default function ChatPage() {
                 <div key={index} className={`message ${message.role}`}>
                   {message.role === 'assistant' ? (
                     <div className="markdown-content">
-                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                       {message.activeTool && (
                         <div className="tool-indicator">
                           <span className="tool-spinner" />

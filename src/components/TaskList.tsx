@@ -7,8 +7,11 @@ import { getTaskDueDateStatus, formatDueDate, formatLastUpdated } from '@/lib/da
 
 const REFRESH_INTERVAL = 30000 // 30 seconds
 
+type StatusFilter = 'all' | 'incomplete' | 'completed'
+
 interface TaskListProps {
   initialData: GroupedTasks[]
+  statusFilter?: StatusFilter
 }
 
 interface SubtaskRowProps {
@@ -29,7 +32,7 @@ function SubtaskRow({ task, onComplete }: SubtaskRowProps) {
       await fetch(`/api/tasks/${task.gid}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed: newState }),
+        body: JSON.stringify({ completed: newState, taskName: task.name }),
       })
       onComplete(task.gid, newState)
     } catch {
@@ -60,9 +63,10 @@ interface TaskRowProps {
   task: AsanaTask
   onTaskClick: (task: AsanaTask) => void
   onComplete: (gid: string, completed: boolean) => void
+  statusFilter?: StatusFilter
 }
 
-function TaskRow({ task, onTaskClick, onComplete }: TaskRowProps) {
+function TaskRow({ task, onTaskClick, onComplete, statusFilter = 'all' }: TaskRowProps) {
   const [isCompleted, setIsCompleted] = useState(task.completed)
   const [isUpdating, setIsUpdating] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
@@ -71,6 +75,14 @@ function TaskRow({ task, onTaskClick, onComplete }: TaskRowProps) {
 
   const hasSubtasks = (task.num_subtasks || 0) > 0
   const dueDateStatus = getTaskDueDateStatus(task.due_on, isCompleted)
+
+  // Filter subtasks based on status filter
+  const filteredSubtasks = subtasks.filter(st => {
+    if (statusFilter === 'all') return true
+    if (statusFilter === 'completed') return st.completed
+    if (statusFilter === 'incomplete') return !st.completed
+    return true
+  })
 
   const handleComplete = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -82,7 +94,7 @@ function TaskRow({ task, onTaskClick, onComplete }: TaskRowProps) {
       await fetch(`/api/tasks/${task.gid}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed: newState }),
+        body: JSON.stringify({ completed: newState, taskName: task.name }),
       })
       onComplete(task.gid, newState)
     } catch {
@@ -167,14 +179,16 @@ function TaskRow({ task, onTaskClick, onComplete }: TaskRowProps) {
         <div className="subtasks-container">
           {loadingSubtasks ? (
             <div className="subtasks-loading">Loading...</div>
-          ) : subtasks.length > 0 ? (
-            subtasks.map(st => (
+          ) : filteredSubtasks.length > 0 ? (
+            filteredSubtasks.map(st => (
               <SubtaskRow
                 key={st.gid}
                 task={st}
                 onComplete={handleSubtaskComplete}
               />
             ))
+          ) : subtasks.length > 0 ? (
+            <div className="subtasks-empty">No {statusFilter} subtasks</div>
           ) : (
             <div className="subtasks-empty">No subtasks</div>
           )}
@@ -189,9 +203,10 @@ interface SectionProps {
   tasks: AsanaTask[]
   onTaskClick: (task: AsanaTask) => void
   onComplete: (gid: string, completed: boolean) => void
+  statusFilter?: StatusFilter
 }
 
-function Section({ section, tasks, onTaskClick, onComplete }: SectionProps) {
+function Section({ section, tasks, onTaskClick, onComplete, statusFilter }: SectionProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const incompleteTasks = tasks.filter(t => !t.completed).length
 
@@ -222,6 +237,7 @@ function Section({ section, tasks, onTaskClick, onComplete }: SectionProps) {
                 task={task}
                 onTaskClick={onTaskClick}
                 onComplete={onComplete}
+                statusFilter={statusFilter}
               />
             ))
           ) : (
@@ -233,13 +249,18 @@ function Section({ section, tasks, onTaskClick, onComplete }: SectionProps) {
   )
 }
 
-export function TaskList({ initialData }: TaskListProps) {
+export function TaskList({ initialData, statusFilter }: TaskListProps) {
   const [data, setData] = useState(initialData)
   const [selectedTask, setSelectedTask] = useState<AsanaTask | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(Date.now())
   const [lastUpdatedText, setLastUpdatedText] = useState('Just now')
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Sync data when initialData prop changes (e.g., from filtering)
+  useEffect(() => {
+    setData(initialData)
+  }, [initialData])
 
   const fetchTasks = useCallback(async (isManual = false) => {
     if (isRefreshing && !isManual) return
@@ -319,6 +340,16 @@ export function TaskList({ initialData }: TaskListProps) {
     }
   }, [selectedTask])
 
+  const handleTaskDelete = useCallback((gid: string) => {
+    setData(prev =>
+      prev.map(group => ({
+        ...group,
+        tasks: group.tasks.filter(task => task.gid !== gid),
+      }))
+    )
+    setSelectedTask(null)
+  }, [])
+
   return (
     <div className="task-list-wrapper">
       <div className="task-list-toolbar">
@@ -352,6 +383,7 @@ export function TaskList({ initialData }: TaskListProps) {
             tasks={tasks}
             onTaskClick={handleTaskClick}
             onComplete={handleComplete}
+            statusFilter={statusFilter}
           />
         ))}
       </div>
@@ -360,6 +392,7 @@ export function TaskList({ initialData }: TaskListProps) {
           task={selectedTask}
           onClose={handleCloseModal}
           onUpdate={handleTaskUpdate}
+          onDelete={handleTaskDelete}
         />
       )}
     </div>

@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { Deal, Contact, Note } from '@/types/database'
-import { MarkdownContent } from '@/components/MarkdownContent'
+import { NotesSection } from '@/components/NotesSection'
 
 async function getDeal(id: string): Promise<Deal | null> {
   const { data: deal, error } = await supabase
@@ -146,32 +146,7 @@ export default async function DealPage({ params }: PageProps) {
         </div>
       </div>
 
-      <div className="card">
-        <h2>Notes ({notes.length})</h2>
-        {notes.length > 0 ? (
-          <div className="notes-list">
-            {notes.map(note => (
-              <div key={note.id} className="note-card">
-                {note.meeting_date && (
-                  <div className="date">
-                    {new Date(note.meeting_date).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </div>
-                )}
-                <MarkdownContent content={note.content || 'Empty note'} compact />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state" style={{ padding: '30px' }}>
-            No notes yet
-          </div>
-        )}
-      </div>
+      <NotesSection dealId={id} initialNotes={notes} />
     </div>
   )
 }

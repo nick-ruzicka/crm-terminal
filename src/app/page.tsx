@@ -3,8 +3,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useToast } from '@/components/Toast'
 import { SuggestionCardsContainer, type Suggestion } from '@/components/SuggestionCard'
+import { Package, AlertCircle, ClipboardList, Trash2, FileText, RotateCcw, ArrowRightCircle, Sparkles, RefreshCw } from 'lucide-react'
 
 interface Message {
   id?: string
@@ -27,22 +29,14 @@ interface DashboardStats {
   pendingReviews: number
 }
 
-interface TaskDue {
-  gid: string
-  name: string
-  due_on: string | null
-  linked_deal?: string | null
-}
-
-interface ActivityItem {
-  id: string
-  type: 'deal_created' | 'deal_updated' | 'deal_moved' | 'task_completed' | 'task_created' | 'note_added'
-  title: string
-  subtitle: string
-  timestamp: string
-}
-
 const PRIORITY_ORDER = ['critical', 'high', 'medium', 'low']
+
+// localStorage keys and TTL for persistence across tab switches
+const SUGGESTIONS_CACHE_KEY = 'dashboard_suggestions'
+const SUGGESTIONS_CACHE_TIME_KEY = 'dashboard_suggestions_time'
+const SUGGESTIONS_CACHE_TTL = 30 * 60 * 1000 // 30 minutes
+const ACTIVE_CHAT_SESSION_KEY = 'active_chat_session'
+const CHAT_DRAFT_KEY = 'chat_draft'
 
 export default function Dashboard() {
   // Chat state
@@ -55,13 +49,30 @@ export default function Dashboard() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(true)
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
 
+  // Welcome experience state
+  const [showWelcome, setShowWelcome] = useState(true)
+  const [backgroundSuggestions, setBackgroundSuggestions] = useState<Suggestion[] | null>(null)
+  const [showAllSuggestions, setShowAllSuggestions] = useState(false)
+
   // Dashboard state
   const [stats, setStats] = useState<DashboardStats>({ totalDeals: 0, overdueTasks: 0, pendingReviews: 0 })
-  const [tasksDue, setTasksDue] = useState<TaskDue[]>([])
-  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([])
   const [greeting, setGreeting] = useState('Good day')
-  const [isLoadingActivity, setIsLoadingActivity] = useState(true)
-  const [isLoadingTasks, setIsLoadingTasks] = useState(true)
+
+  // Activity drawer state
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false)
+  const [activityData, setActivityData] = useState<Array<{
+    type: string
+    name: string
+    time: string
+    relative: string
+    metadata?: {
+      count?: number
+      companies?: string[]
+      to_stage?: string
+    }
+  }>>([])
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false)
+  const isLoadingActivityRef = useRef(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -105,46 +116,15 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Fetch tasks due soon
-  const fetchTasksDue = useCallback(async () => {
-    setIsLoadingTasks(true)
+  // Fetch overdue tasks count for stats
+  const fetchOverdueTasks = useCallback(async () => {
     try {
       const res = await fetch('/api/tasks/bulk-analyze', { method: 'POST' })
       const data = await res.json()
-
-      // Combine overdue and due this week
-      const overdue = (data.overdue || []).map((t: TaskDue) => ({ ...t, isOverdue: true }))
-      const dueThisWeek = data.dueThisWeek || []
-
-      setTasksDue([...overdue, ...dueThisWeek].slice(0, 5))
-      setStats(prev => ({ ...prev, overdueTasks: overdue.length }))
+      const overdueCount = (data.overdue || []).length
+      setStats(prev => ({ ...prev, overdueTasks: overdueCount }))
     } catch (error) {
       console.error('Failed to fetch tasks:', error)
-    } finally {
-      setIsLoadingTasks(false)
-    }
-  }, [])
-
-  // Fetch recent activity from aggregated endpoint
-  const fetchRecentActivity = useCallback(async () => {
-    setIsLoadingActivity(true)
-    try {
-      const res = await fetch('/api/activity')
-      const data = await res.json()
-
-      const activity: ActivityItem[] = (data.activities || []).map((item: { id: string; type: string; title: string; subtitle: string; timestamp: string }) => ({
-        id: item.id,
-        type: item.type as ActivityItem['type'],
-        title: item.title,
-        subtitle: item.subtitle,
-        timestamp: formatTimeAgo(item.timestamp),
-      }))
-
-      setRecentActivity(activity)
-    } catch (error) {
-      console.error('Failed to fetch activity:', error)
-    } finally {
-      setIsLoadingActivity(false)
     }
   }, [])
 
@@ -161,105 +141,139 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Build greeting message with suggestions
-  const buildSuggestionsMessage = useCallback((suggestions: Suggestion[]) => {
-    // Group by priority
-    const grouped = suggestions.reduce((acc: Record<string, Suggestion[]>, s: Suggestion) => {
-      if (!acc[s.priority]) acc[s.priority] = []
-      acc[s.priority].push(s)
-      return acc
-    }, {})
+  // Build conversational greeting message
+  const buildConversationalGreeting = useCallback((suggestions: Suggestion[]) => {
+    const hour = new Date().getHours()
+    const timeGreeting = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
 
-    // Build message content
-    const criticalCount = grouped.critical?.length || 0
-    const highCount = grouped.high?.length || 0
-    const totalItems = criticalCount + highCount
-
-    let content = `${greeting}, Nick.\n\n`
-    if (totalItems > 0) {
-      content += `You have **${totalItems} priority item${totalItems !== 1 ? 's' : ''}** to review:\n\n`
+    if (!suggestions || suggestions.length === 0) {
+      return `Hey Nick 👋 You're all caught up! Nothing urgent on your radar.\n\nWhat would you like to work on?`
     }
 
-    // Add suggestion summaries by priority
-    for (const priority of PRIORITY_ORDER) {
-      const items = grouped[priority]
-      if (items && items.length > 0) {
-        content += `**${priority.charAt(0).toUpperCase() + priority.slice(1)}:**\n`
-        items.slice(0, 3).forEach((item: Suggestion) => {
-          content += `• ${item.title}\n`
-        })
-        if (items.length > 3) {
-          content += `• _...and ${items.length - 3} more_\n`
+    // Sort by priority (critical first, then high, etc.)
+    const sorted = [...suggestions].sort((a, b) => {
+      const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 }
+      return (priorityOrder[a.priority] || 4) - (priorityOrder[b.priority] || 4)
+    })
+
+    // Get top 3 priorities
+    const top3 = sorted.slice(0, 3)
+    const total = suggestions.length
+
+    // Varied, warm greetings that rotate by day of week
+    const greetings = [
+      `Hey Nick 👋 Here's what's on your radar:`,
+      `Good ${timeGreeting}, Nick! A few things need attention:`,
+      `Hey Nick 👋 Quick ${timeGreeting} update:`,
+      `Hi Nick! Here's your priority list:`,
+      `Good ${timeGreeting} Nick 👋 Here's what needs attention:`,
+      `Hey Nick, here's your ${timeGreeting} briefing:`,
+      `Hey Nick 👋 Happy ${timeGreeting}! Here's what's up:`
+    ]
+    const greetingIndex = new Date().getDay() % greetings.length
+    console.log('[GREETING] Day:', new Date().getDay(), 'Index:', greetingIndex, 'Text:', greetings[greetingIndex])
+
+    let content = `${greetings[greetingIndex]}\n\n`
+    content += `You've got **${total} item${total !== 1 ? 's' : ''}** to review. Top priorities:\n\n`
+
+    if (top3.length > 0) {
+      top3.forEach(s => {
+        // Shorten action text to 2-4 words max
+        const shortenAction = (title: string): string => {
+          const t = title.toLowerCase()
+          // Extract stage transitions
+          if (t.includes('to closing')) return 'move to closing'
+          if (t.includes('to implementation')) return 'advance to implementation'
+          if (t.includes('to negotiation')) return 'move to negotiation'
+          if (t.includes('to discovery')) return 'start discovery'
+          // Extract key actions
+          if (t.includes('follow up') || t.includes('follow-up')) return 'follow up'
+          if (t.includes('schedule')) return 'schedule meeting'
+          if (t.includes('send')) return 'send update'
+          if (t.includes('review')) return 'needs review'
+          // Extract integrations/partnerships
+          const integrationMatch = t.match(/(?:progress|advance|discuss)\s+(\w+)\s+integration/i)
+          if (integrationMatch) return `${integrationMatch[1]} integration`
+          // Default: take first 4 words
+          const words = t.split(/\s+/).slice(0, 4).join(' ')
+          return words.length > 30 ? words.slice(0, 30) + '...' : words
         }
-        content += '\n'
-      }
+        content += `• **${s.source.name}** — ${shortenAction(s.title)}\n\n`
+      })
     }
 
-    content += 'What should we tackle first?'
+    content += `What do you want to tackle?`
     return content
-  }, [greeting])
+  }, [])
 
-  // Load suggestions - try cache first, then generate in background
-  const loadSuggestions = useCallback(async () => {
+  // Save suggestions to localStorage
+  const saveSuggestionsToCache = useCallback((suggestions: Suggestion[]) => {
     try {
-      // First, try to get cached suggestions (instant)
-      const cachedRes = await fetch('/api/suggestions/generate')
-      const cachedData = await cachedRes.json()
+      localStorage.setItem(SUGGESTIONS_CACHE_KEY, JSON.stringify(suggestions))
+      localStorage.setItem(SUGGESTIONS_CACHE_TIME_KEY, Date.now().toString())
+    } catch { /* ignore */ }
+  }, [])
 
-      if (cachedData.suggestions && cachedData.suggestions.length > 0) {
-        // We have cached suggestions - show them immediately
-        const content = buildSuggestionsMessage(cachedData.suggestions)
-        setMessages([{
-          role: 'assistant',
-          content,
-          suggestions: cachedData.suggestions,
-        }])
-
-        // If cache is stale, regenerate in background
-        if (cachedData.stale) {
-          console.log('[DASHBOARD] Cache is stale, regenerating in background...')
-          fetch('/api/suggestions/generate?skip_cache=true', { method: 'POST' })
-            .then(res => res.json())
-            .then(freshData => {
-              if (freshData.suggestions && freshData.suggestions.length > 0) {
-                console.log('[DASHBOARD] Fresh suggestions ready, updating UI')
-                const freshContent = buildSuggestionsMessage(freshData.suggestions)
-                setMessages([{
-                  role: 'assistant',
-                  content: freshContent,
-                  suggestions: freshData.suggestions,
-                }])
-              }
-            })
-            .catch(err => console.error('[DASHBOARD] Background refresh failed:', err))
-        }
-        return cachedData.suggestions
+  // Background refresh - silent, updates state if different
+  const refreshSuggestionsInBackground = useCallback(async () => {
+    try {
+      const res = await fetch('/api/suggestions')
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.suggestions?.length > 0) {
+        console.log('[DASHBOARD] Background refresh complete')
+        setBackgroundSuggestions(data.suggestions)
+        saveSuggestionsToCache(data.suggestions)
       }
+    } catch (err) {
+      console.error('[DASHBOARD] Background refresh failed:', err)
+    }
+  }, [saveSuggestionsToCache])
 
-      // No cache - need to generate fresh (show loading state)
-      setIsLoadingSuggestions(true)
-      console.log('[DASHBOARD] No cache, generating suggestions...')
+  // Load suggestions - instant from cache, then background refresh
+  const loadSuggestions = useCallback(async () => {
+    // 1. Try localStorage cache first (instant)
+    try {
+      const cached = localStorage.getItem(SUGGESTIONS_CACHE_KEY)
+      const cacheTime = localStorage.getItem(SUGGESTIONS_CACHE_TIME_KEY)
 
-      const res = await fetch('/api/suggestions/generate?skip_cache=true', { method: 'POST' })
+      if (cached && cacheTime) {
+        const age = Date.now() - parseInt(cacheTime)
+        if (age < SUGGESTIONS_CACHE_TTL) {
+          const cachedSuggestions = JSON.parse(cached)
+          console.log('[DASHBOARD] Using localStorage cache (age: ' + Math.round(age/1000) + 's)')
+          setBackgroundSuggestions(cachedSuggestions)
+          setIsLoadingSuggestions(false)
+          // Still refresh in background
+          refreshSuggestionsInBackground()
+          return cachedSuggestions
+        }
+      }
+    } catch {
+      // Cache read failed
+    }
+
+    // 2. No valid cache - must fetch (show loading)
+    setIsLoadingSuggestions(true)
+
+    try {
+      const res = await fetch('/api/suggestions')
       if (!res.ok) {
         if (res.status === 429) {
           addToast('warning', 'Rate limit reached', 'Suggestions will refresh in a few minutes')
-          setIsLoadingSuggestions(false)
-          return null
         }
-        throw new Error('Failed to load suggestions')
+        setIsLoadingSuggestions(false)
+        return null
       }
 
       const data = await res.json()
       setIsLoadingSuggestions(false)
 
-      if (data.suggestions && data.suggestions.length > 0) {
-        const content = buildSuggestionsMessage(data.suggestions)
-        setMessages([{
-          role: 'assistant',
-          content,
-          suggestions: data.suggestions,
-        }])
+      if (data.suggestions?.length > 0) {
+        setBackgroundSuggestions(data.suggestions)
+        saveSuggestionsToCache(data.suggestions)
+      } else {
+        setBackgroundSuggestions([])
       }
 
       return data.suggestions || []
@@ -268,41 +282,98 @@ export default function Dashboard() {
       setIsLoadingSuggestions(false)
       return null
     }
-  }, [addToast, buildSuggestionsMessage])
+  }, [addToast, saveSuggestionsToCache, refreshSuggestionsInBackground])
+
+  // Load activity for drawer
+  const loadActivity = useCallback(async () => {
+    if (isLoadingActivityRef.current) return
+    isLoadingActivityRef.current = true
+    setIsLoadingActivity(true)
+    try {
+      const res = await fetch('/api/activity?limit=20')
+      if (!res.ok) throw new Error('Failed to load activity')
+      const data = await res.json()
+
+      // Format activity items with relative time
+      const formatRelativeTime = (dateStr: string) => {
+        // Normalize: if no timezone, assume UTC
+        const normalized = dateStr.includes('+') || dateStr.includes('Z') ? dateStr : dateStr + 'Z'
+        const date = new Date(normalized)
+        const now = new Date()
+        const diffMs = now.getTime() - date.getTime()
+        const diffMins = Math.floor(diffMs / 60000)
+        const diffHours = Math.floor(diffMs / 3600000)
+        const diffDays = Math.floor(diffMs / 86400000)
+
+        if (diffMins < 1) return 'just now'
+        if (diffMins < 60) return `${diffMins}m`
+        if (diffHours < 24) return `${diffHours}h`
+        return `${diffDays}d`
+      }
+
+      interface ActivityApiItem {
+        type: string
+        title: string
+        timestamp: string
+        metadata?: {
+          count?: number
+          companies?: string[]
+          to_stage?: string
+        }
+      }
+      const formatted = (data.activities || []).map((item: ActivityApiItem) => ({
+        type: item.type.replace(/_/g, ' '),
+        name: item.title,
+        time: item.timestamp,
+        relative: formatRelativeTime(item.timestamp),
+        metadata: item.metadata,
+      }))
+
+      setActivityData(formatted)
+    } catch (err) {
+      console.error('Failed to load activity:', err)
+    } finally {
+      isLoadingActivityRef.current = false
+      setIsLoadingActivity(false)
+    }
+  }, []) // No dependencies - uses ref for guard
+
+  // Open activity drawer - always fetch fresh data
+  const openActivityDrawer = useCallback(() => {
+    setActivityDrawerOpen(true)
+    isLoadingActivityRef.current = false
+    setActivityData([])
+    loadActivity()
+  }, [loadActivity])
 
   // Initialize on mount
   useEffect(() => {
     fetchStats()
-    fetchTasksDue()
-    fetchRecentActivity()
+    fetchOverdueTasks()
     fetchSessions()
-  }, [fetchStats, fetchTasksDue, fetchRecentActivity, fetchSessions])
 
-  // Auto-load suggestions for new chat
+    // Check for active chat session and restore it
+    const activeSessionId = localStorage.getItem(ACTIVE_CHAT_SESSION_KEY)
+    if (activeSessionId) {
+      loadSession(activeSessionId)
+      setShowWelcome(false)
+    }
+
+    // Restore draft input text
+    const draft = localStorage.getItem(CHAT_DRAFT_KEY)
+    if (draft) {
+      setInput(draft)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchStats, fetchOverdueTasks, fetchSessions])
+
+  // Auto-load suggestions on mount
   useEffect(() => {
     if (messages.length === 0 && !currentSessionId) {
       loadSuggestions()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSessionId])
-
-  // Load messages for a session
-  const loadSession = async (sessionId: string) => {
-    try {
-      const res = await fetch(`/api/chat/sessions/${sessionId}/messages`)
-      const data = await res.json()
-      setMessages(data.messages || [])
-      setCurrentSessionId(sessionId)
-    } catch (error) {
-      console.error('Failed to load session:', error)
-    }
-  }
-
-  // Start new chat
-  const startNewChat = () => {
-    setMessages([])
-    setCurrentSessionId(null)
-  }
 
   // Save message to database
   const saveMessage = async (sessionId: string, role: 'user' | 'assistant', content: string) => {
@@ -337,6 +408,32 @@ export default function Dashboard() {
     return null
   }
 
+  // Load messages for a session
+  const loadSession = async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/chat/sessions/${sessionId}/messages`)
+      const data = await res.json()
+      setMessages(data.messages || [])
+      setCurrentSessionId(sessionId)
+      setShowWelcome(false)
+      // Save active session to localStorage for persistence
+      localStorage.setItem(ACTIVE_CHAT_SESSION_KEY, sessionId)
+    } catch (error) {
+      console.error('Failed to load session:', error)
+    }
+  }
+
+  // Start new chat
+  const startNewChat = () => {
+    setMessages([])
+    setCurrentSessionId(null)
+    setShowWelcome(true)
+    // Clear active session from localStorage
+    localStorage.removeItem(ACTIVE_CHAT_SESSION_KEY)
+    // Reload suggestions for welcome screen
+    loadSuggestions()
+  }
+
   // Send message
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return
@@ -345,26 +442,27 @@ export default function Dashboard() {
     const newMessages = [...messages, userMessage]
     setMessages(newMessages)
     setInput('')
+    localStorage.removeItem(CHAT_DRAFT_KEY) // Clear draft on send
     resetTextareaHeight()
     setIsLoading(true)
 
     let sessionId = currentSessionId
-
-    if (!sessionId) {
-      sessionId = await createSession(userMessage.content)
-      if (sessionId) {
-        setCurrentSessionId(sessionId)
-      }
-    }
-
-    if (sessionId) {
-      await saveMessage(sessionId, 'user', userMessage.content)
-    }
-
     const assistantMessageIndex = newMessages.length
     setMessages([...newMessages, { role: 'assistant', content: '' }])
 
     try {
+      // Session management - errors here shouldn't break the chat
+      if (!sessionId) {
+        sessionId = await createSession(userMessage.content)
+        if (sessionId) {
+          setCurrentSessionId(sessionId)
+          localStorage.setItem(ACTIVE_CHAT_SESSION_KEY, sessionId)
+        }
+      }
+
+      if (sessionId) {
+        await saveMessage(sessionId, 'user', userMessage.content)
+      }
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -449,8 +547,7 @@ export default function Dashboard() {
 
       // Refresh stats after chat action
       fetchStats()
-      fetchTasksDue()
-      fetchRecentActivity()
+      fetchOverdueTasks()
     } catch (error) {
       const errorContent = error instanceof Error ? `Error: ${error.message}` : 'Failed to connect to the server.'
       setMessages(prev => {
@@ -482,7 +579,14 @@ export default function Dashboard() {
       textarea.style.height = 'auto'
       textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px'
     }
-    setInput(e.target.value)
+    const value = e.target.value
+    setInput(value)
+    // Save draft to localStorage for persistence across navigation
+    if (value) {
+      localStorage.setItem(CHAT_DRAFT_KEY, value)
+    } else {
+      localStorage.removeItem(CHAT_DRAFT_KEY)
+    }
   }
 
   const resetTextareaHeight = () => {
@@ -500,8 +604,7 @@ export default function Dashboard() {
   // Handle action complete - refresh data
   const handleSuggestionActionComplete = () => {
     fetchStats()
-    fetchTasksDue()
-    fetchRecentActivity()
+    fetchOverdueTasks()
   }
 
   const deleteSession = async (sessionId: string, e: React.MouseEvent) => {
@@ -575,8 +678,26 @@ export default function Dashboard() {
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M8 3v10M3 8h10" />
           </svg>
-          New Chat
+          New Session
         </button>
+
+        {/* Sidebar Stats */}
+        <div className="sidebar-stats">
+          <Link href="/deals" className="sidebar-stat">
+            <Package size={14} />
+            <span>{stats.totalDeals}</span>
+          </Link>
+          <span className="sidebar-stat-divider">|</span>
+          <Link href="/tasks" className={`sidebar-stat ${stats.overdueTasks > 0 ? 'alert' : ''}`}>
+            <AlertCircle size={14} />
+            <span>{stats.overdueTasks}</span>
+          </Link>
+          <span className="sidebar-stat-divider">|</span>
+          <Link href="/review" className="sidebar-stat">
+            <ClipboardList size={14} />
+            <span>{stats.pendingReviews}</span>
+          </Link>
+        </div>
 
         <div className="chat-sessions-grouped">
           {isLoadingSessions ? (
@@ -607,42 +728,173 @@ export default function Dashboard() {
             ))
           )}
         </div>
+
+        {/* Activity Log Button */}
+        <button className="activity-log-btn" onClick={openActivityDrawer}>
+          Activity Log
+        </button>
       </aside>
+
+      {/* Activity Drawer */}
+      {activityDrawerOpen && (
+        <>
+          <div className="activity-drawer-overlay" onClick={() => setActivityDrawerOpen(false)} />
+          <div className="activity-drawer open">
+            <div className="activity-drawer-header">
+              <span>Activity Log</span>
+              <button className="drawer-close" onClick={() => setActivityDrawerOpen(false)}>✕</button>
+            </div>
+            <div className="activity-drawer-content">
+              {isLoadingActivity ? (
+                <div className="activity-loading">Loading...</div>
+              ) : (
+                <>
+                  <div className="activity-section">
+                    {activityData.length === 0 ? (
+                      <div className="activity-empty">No recent activity</div>
+                    ) : (
+                      activityData.map((item, i) => {
+                        const isBulkAction = item.type === 'bulk delete' || item.type === 'bulk stage change'
+                        const companies = item.metadata?.companies || []
+                        const toStage = item.metadata?.to_stage
+
+                        // Get icon and action text based on type
+                        const getActivityDetails = (): { icon: React.ReactNode; action: string } => {
+                          switch (item.type) {
+                            case 'bulk delete':
+                              return { icon: <Trash2 size={16} />, action: `Deleted ${item.metadata?.count || companies.length} deals` }
+                            case 'bulk stage change':
+                              return { icon: <ArrowRightCircle size={16} />, action: `Moved ${item.metadata?.count || companies.length} deals${toStage ? ` to ${toStage}` : ''}` }
+                            case 'deal deleted':
+                              return { icon: <Trash2 size={16} />, action: 'Deleted' }
+                            case 'deal restored':
+                              return { icon: <RotateCcw size={16} />, action: 'Restored' }
+                            case 'note added':
+                              return { icon: <FileText size={16} />, action: 'Added note to' }
+                            case 'task completed':
+                              return { icon: <ClipboardList size={16} />, action: 'Completed' }
+                            case 'task created':
+                              return { icon: <ClipboardList size={16} />, action: 'Created task' }
+                            case 'deal created':
+                              return { icon: <Sparkles size={16} />, action: 'Created' }
+                            case 'deal updated':
+                              return { icon: <RefreshCw size={16} />, action: 'Updated' }
+                            default:
+                              return { icon: <Package size={16} />, action: item.type }
+                          }
+                        }
+
+                        const { icon, action } = getActivityDetails()
+                        const showCompanyList = isBulkAction && companies.length > 0
+
+                        return (
+                          <div key={i} className="activity-card">
+                            <div className="activity-card-header">
+                              <span className="activity-icon">{icon}</span>
+                              <span className="activity-action">
+                                {isBulkAction ? action : `${action} ${item.name}`}
+                              </span>
+                              <span className="activity-time">{item.relative}</span>
+                            </div>
+                            {showCompanyList && (
+                              <div className="activity-card-body">
+                                <span className="activity-companies-preview">
+                                  {companies.slice(0, 3).join(', ')}
+                                  {companies.length > 3 && `, +${companies.length - 3} more`}
+                                </span>
+                                {companies.length > 3 && (
+                                  <details className="activity-expand">
+                                    <summary>View all deals</summary>
+                                    <ul className="activity-companies-list">
+                                      {companies.map((c, j) => (
+                                        <li key={j}>{c}</li>
+                                      ))}
+                                    </ul>
+                                  </details>
+                                )}
+                              </div>
+                            )}
+                            {!isBulkAction && item.type === 'note added' && (
+                              <div className="activity-card-subtitle">
+                                Note added to deal
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  <div className="system-status">
+                    <div className="system-status-divider" />
+                    <div className="activity-section-label">System Status</div>
+                    <div className="status-item">
+                      <span className="status-icon">✅</span>
+                      <span>Asana: {stats.overdueTasks > 0 ? `${stats.overdueTasks} overdue` : 'synced'}</span>
+                    </div>
+                    <div className="status-item">
+                      <span className="status-icon">✅</span>
+                      <span>Suggestions: active</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Center - Main Chat */}
       <section className="chat-center">
-        {/* Compact Metrics Bar */}
-        <div className="metrics-bar">
-          <Link href="/deals" className="metric-pill">
-            <span className="metric-value">{stats.totalDeals}</span>
-            <span className="metric-label">deals</span>
-          </Link>
-          <Link href="/tasks" className={`metric-pill ${stats.overdueTasks > 0 ? 'warning' : ''}`}>
-            <span className="metric-value">{stats.overdueTasks}</span>
-            <span className="metric-label">overdue</span>
-          </Link>
-          <Link href="/review" className={`metric-pill ${stats.pendingReviews > 0 ? 'accent' : ''}`}>
-            <span className="metric-value">{stats.pendingReviews}</span>
-            <span className="metric-label">review</span>
-          </Link>
-        </div>
-
         {/* Chat Container */}
         <div className="chat-container-glass">
           <div className="chat-messages">
-            {isLoadingSuggestions && messages.length === 0 ? (
-              <div className="chat-loading-state">
-                <div className="loading-greeting">
-                  <h2>{greeting}, Nick</h2>
-                  <p>Analyzing your pipeline...</p>
+            {showWelcome && messages.length === 0 && !currentSessionId ? (
+              <>
+                {/* Conversational greeting */}
+                <div className="assistant-message welcome-greeting">
+                  <div className="markdown-content">
+                    {isLoadingSuggestions && !backgroundSuggestions ? (
+                      <div className="welcome-loading">
+                        <span className="welcome-loading-spinner" />
+                        <span>Loading...</span>
+                      </div>
+                    ) : (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {buildConversationalGreeting(backgroundSuggestions || [])}
+                      </ReactMarkdown>
+                    )}
+                  </div>
+                  {/* Show all toggle */}
+                  {backgroundSuggestions && backgroundSuggestions.length > 3 && !showAllSuggestions && (
+                    <button
+                      className="show-all-toggle"
+                      onClick={() => setShowAllSuggestions(true)}
+                    >
+                      View {backgroundSuggestions.filter(s => !dismissedSuggestions.has(s.id)).length} AI-prioritized items →
+                    </button>
+                  )}
                 </div>
-                <div className="suggestion-skeletons">
-                  <div className="suggestion-skeleton" />
-                  <div className="suggestion-skeleton" />
-                  <div className="suggestion-skeleton" />
-                  <div className="suggestion-skeleton" />
-                </div>
-              </div>
+                {/* Show suggestion cards only when expanded */}
+                {showAllSuggestions && backgroundSuggestions && backgroundSuggestions.length > 0 && (
+                  <div className="welcome-suggestions">
+                    <div className="suggestions-header">
+                      <span>All items needing attention</span>
+                      <button
+                        className="collapse-toggle"
+                        onClick={() => setShowAllSuggestions(false)}
+                      >
+                        Collapse
+                      </button>
+                    </div>
+                    <SuggestionCardsContainer
+                      suggestions={backgroundSuggestions.filter(s => !dismissedSuggestions.has(s.id))}
+                      onDismiss={handleDismissSuggestion}
+                      onActionComplete={handleSuggestionActionComplete}
+                    />
+                  </div>
+                )}
+              </>
             ) : messages.length === 0 ? (
               <div className="chat-empty-state">
                 <h2>{greeting}, Nick</h2>
@@ -653,14 +905,25 @@ export default function Dashboard() {
                 <div key={index} className={`message ${message.role}`}>
                   {message.role === 'assistant' ? (
                     <div className="assistant-message">
-                      <div className="markdown-content">
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
-                      </div>
-                      {message.activeTool && (
-                        <div className="tool-indicator">
-                          <span className="tool-spinner" />
-                          <span className="tool-name">{message.activeTool}</span>
+                      {/* Show typing indicator when content is empty and loading */}
+                      {!message.content && isLoading && !message.activeTool ? (
+                        <div className="typing-indicator">
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
                         </div>
+                      ) : (
+                        <>
+                          <div className="markdown-content">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                          </div>
+                          {message.activeTool && (
+                            <div className="tool-indicator">
+                              <span className="tool-spinner" />
+                              <span className="tool-name">{message.activeTool}</span>
+                            </div>
+                          )}
+                        </>
                       )}
                       {/* Render expandable suggestion cards if present */}
                       {message.suggestions && message.suggestions.length > 0 && (
@@ -708,119 +971,7 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
-
-      {/* Right Sidebar - Glanceable */}
-      <aside className="glanceable-sidebar">
-        {/* Due Soon Widget */}
-        <div className="glanceable-widget">
-          <h3 className="widget-title">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="8" cy="8" r="6" />
-              <path d="M8 5v3l2 1.5" />
-            </svg>
-            Due Soon
-          </h3>
-          <div className="widget-list">
-            {isLoadingTasks ? (
-              <>
-                <div className="widget-skeleton" />
-                <div className="widget-skeleton" />
-                <div className="widget-skeleton" />
-              </>
-            ) : tasksDue.length > 0 ? (
-              tasksDue.map(task => (
-                <div key={task.gid} className={`widget-list-item ${(task as TaskDue & { isOverdue?: boolean }).isOverdue ? 'overdue' : ''}`}>
-                  <div className="task-checkbox" />
-                  <div className="task-info">
-                    <span className="task-name">{task.name}</span>
-                    <span className="task-due">
-                      {task.due_on ? formatDueDate(task.due_on) : 'No date'}
-                    </span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="widget-empty">No upcoming deadlines</div>
-            )}
-          </div>
-        </div>
-
-        {/* Recent Activity Widget */}
-        <div className="glanceable-widget">
-          <h3 className="widget-title">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M3 8h10M3 4h10M3 12h6" />
-            </svg>
-            Activity
-          </h3>
-          <div className="widget-list">
-            {isLoadingActivity ? (
-              <>
-                <div className="widget-skeleton" />
-                <div className="widget-skeleton" />
-                <div className="widget-skeleton" />
-              </>
-            ) : recentActivity.length > 0 ? (
-              recentActivity.map(activity => (
-                <div key={activity.id} className="widget-list-item activity">
-                  <div className={`activity-dot ${activity.type}`} />
-                  <div className="activity-info">
-                    <span className="activity-title">
-                      {getActivityLabel(activity.type)}: {activity.title}
-                    </span>
-                    <span className="activity-meta">{activity.timestamp}</span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="widget-empty">No recent activity</div>
-            )}
-          </div>
-        </div>
-      </aside>
     </div>
   )
 }
 
-// Helper functions
-function getActivityLabel(type: string): string {
-  switch (type) {
-    case 'deal_created': return 'New deal'
-    case 'deal_updated': return 'Deal updated'
-    case 'deal_moved': return 'Stage changed'
-    case 'note_added': return 'Note added'
-    case 'task_completed': return 'Task done'
-    case 'task_created': return 'New task'
-    default: return 'Updated'
-  }
-}
-
-function formatTimeAgo(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / (1000 * 60))
-
-  if (diffMins < 1) return 'Just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-function formatDueDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  now.setHours(0, 0, 0, 0)
-  date.setHours(0, 0, 0, 0)
-
-  const diffDays = Math.floor((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-
-  if (diffDays < 0) return `${Math.abs(diffDays)}d overdue`
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Tomorrow'
-  if (diffDays < 7) return date.toLocaleDateString('en-US', { weekday: 'short' })
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}

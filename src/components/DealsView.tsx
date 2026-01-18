@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { ViewToggle, type ViewMode } from './ViewToggle'
 import { DealList } from './DealList'
 import { DealBoard } from './DealBoard'
 import { NewDealModal, DealDetailPanel } from './DealModals'
+import { STAGES } from '@/constants/stages'
 import type { Deal } from '@/types/database'
 
 interface DealsViewProps {
@@ -12,12 +13,34 @@ interface DealsViewProps {
   stages: string[]
 }
 
+const FILTER_STAGES = [
+  { value: 'all', label: 'All' },
+  ...STAGES.filter(s => !s.value.startsWith('closed_'))
+]
+
 export function DealsView({ deals, stages }: DealsViewProps) {
   const [view, setView] = useState<ViewMode>('list')
   const [mounted, setMounted] = useState(false)
   const [allDeals, setAllDeals] = useState(deals)
   const [showNewDealModal, setShowNewDealModal] = useState(false)
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [stageFilter, setStageFilter] = useState('all')
+
+  // Filter deals based on search and stage
+  const filteredDeals = useMemo(() => {
+    return allDeals.filter(deal => {
+      // Search filter
+      const matchesSearch = searchQuery === '' ||
+        (deal.company || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (deal.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+
+      // Stage filter
+      const matchesStage = stageFilter === 'all' || deal.stage === stageFilter
+
+      return matchesSearch && matchesStage
+    })
+  }, [allDeals, searchQuery, stageFilter])
 
   useEffect(() => {
     setMounted(true)
@@ -89,10 +112,33 @@ export function DealsView({ deals, stages }: DealsViewProps) {
           <ViewToggle storageKey="deals-view" defaultView={view} onChange={handleViewChange} />
         </div>
       </div>
+
+      {/* Search and Filter Bar */}
+      <div className="deals-filter-bar">
+        <input
+          type="text"
+          placeholder="Search deals..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="deals-search-input"
+        />
+        <div className="stage-filter-pills">
+          {FILTER_STAGES.map(stage => (
+            <button
+              key={stage.value}
+              className={`stage-filter-pill ${stageFilter === stage.value ? 'active' : ''}`}
+              onClick={() => setStageFilter(stage.value)}
+            >
+              {stage.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {view === 'list' ? (
-        <DealList deals={allDeals} stages={stages} onDealClick={handleDealClick} />
+        <DealList deals={filteredDeals} stages={stages} onDealClick={handleDealClick} />
       ) : (
-        <DealBoard initialDeals={allDeals} onDealClick={handleDealClick} />
+        <DealBoard initialDeals={filteredDeals} onDealClick={handleDealClick} />
       )}
 
       <NewDealModal

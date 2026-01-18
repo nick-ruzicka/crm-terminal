@@ -9,8 +9,8 @@ import { Footer } from '@/components/Footer'
 import AmbientPlayer from '@/components/AmbientPlayer'
 
 export const metadata: Metadata = {
-  title: 'CRM Terminal',
-  description: 'Supabase CRM Dashboard',
+  title: 'Dispatch',
+  description: 'AI-powered deal management',
 }
 
 // Script to prevent flash of wrong theme
@@ -37,6 +37,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap" rel="stylesheet" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>

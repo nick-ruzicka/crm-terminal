@@ -102,6 +102,79 @@ export async function completeTask(taskGid: string, completed: boolean): Promise
   return result !== null
 }
 
+export async function createTask(data: {
+  name: string
+  notes?: string
+  due_on?: string
+  section_gid?: string
+}): Promise<AsanaTask | null> {
+  const projectId = process.env.ASANA_PROJECT_ID
+  if (!projectId) {
+    console.error('ASANA_PROJECT_ID not configured')
+    return null
+  }
+
+  const taskData: Record<string, unknown> = {
+    name: data.name,
+    projects: [projectId],
+  }
+  if (data.notes) taskData.notes = data.notes
+  if (data.due_on) taskData.due_on = data.due_on
+
+  const task = await asanaFetch<AsanaTask>('/tasks', {
+    method: 'POST',
+    body: JSON.stringify({ data: taskData }),
+  })
+
+  // Add to section if specified
+  if (task && data.section_gid) {
+    await asanaFetch(`/sections/${data.section_gid}/addTask`, {
+      method: 'POST',
+      body: JSON.stringify({ data: { task: task.gid } }),
+    })
+  }
+
+  return task
+}
+
+export async function updateTask(
+  taskGid: string,
+  updates: { name?: string; notes?: string; due_on?: string | null }
+): Promise<AsanaTask | null> {
+  const result = await asanaFetch<AsanaTask>(`/tasks/${taskGid}`, {
+    method: 'PUT',
+    body: JSON.stringify({ data: updates }),
+  })
+  return result
+}
+
+export async function deleteTask(taskGid: string): Promise<boolean> {
+  const token = process.env.ASANA_ACCESS_TOKEN
+  if (!token) {
+    console.error('ASANA_ACCESS_TOKEN not configured')
+    return false
+  }
+
+  try {
+    const res = await fetch(`${ASANA_BASE_URL}/tasks/${taskGid}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
+
+    if (!res.ok) {
+      console.error(`Asana delete error: ${res.status} ${res.statusText}`)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error('Asana delete error:', error)
+    return false
+  }
+}
+
 export function isTaskDueToday(task: AsanaTask): boolean {
   if (!task.due_on) return false
   const dueDate = new Date(task.due_on)

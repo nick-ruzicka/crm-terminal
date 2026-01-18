@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
+import { logBulkDeletion } from '@/lib/activityLog'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,7 +10,7 @@ export async function POST(request: Request) {
   try {
     const supabase = getSupabase()
     const body = await request.json()
-    const { ids } = body
+    const { ids, triggeredBy } = body
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json(
@@ -25,14 +26,32 @@ export async function POST(request: Request) {
       )
     }
 
-    // Log bulk operation for audit
-    console.log(`[BULK DELETE] Deleting ${ids.length} deals at ${new Date().toISOString()}`)
-    console.log(`[BULK DELETE] IDs: ${ids.slice(0, 5).join(', ')}${ids.length > 5 ? '...' : ''}`)
-
-    const { error, count } = await supabase
+    // Fetch deal info before soft deleting (only non-deleted deals)
+    const { data: dealsToDelete } = await supabase
       .from('deals')
-      .delete()
+      .select('id, company, name')
       .in('id', ids)
+      .is('deleted_at', null) as { data: { id: string; company: string | null; name: string | null }[] | null }
+
+    if (!dealsToDelete || dealsToDelete.length === 0) {
+      return NextResponse.json({
+        deleted: 0,
+        success: true,
+        message: 'No deals found to delete'
+      })
+    }
+
+    const dealIds = dealsToDelete.map(d => d.id)
+    const companies = dealsToDelete.map(d => d.company || d.name || 'Unknown')
+
+    console.log(`[BULK DELETE] Soft deleting ${dealIds.length} deals at ${new Date().toISOString()}`)
+
+    // Soft delete: set deleted_at timestamp
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error, count } = await (supabase as any)
+      .from('deals')
+      .update({ deleted_at: new Date().toISOString() })
+      .in('id', dealIds)
 
     if (error) {
       console.error('[BULK DELETE] Error:', error)
@@ -42,11 +61,17 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log(`[BULK DELETE] Successfully deleted ${count || ids.length} deals`)
+    console.log(`[BULK DELETE] Successfully soft deleted ${count || dealIds.length} deals`)
+
+    // Log bulk deletion to activity log
+    await logBulkDeletion(dealIds, companies, {
+      triggeredBy: triggeredBy || 'ui'
+    })
 
     return NextResponse.json({
-      deleted: count || ids.length,
+      deleted: count || dealIds.length,
       success: true,
+      companies,
     })
   } catch (error) {
     console.error('[BULK DELETE] API error:', error)
