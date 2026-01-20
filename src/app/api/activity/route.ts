@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getRecentActivityLogs } from '@/lib/activityLog'
 
@@ -28,8 +28,11 @@ export interface ActivityItem {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams
+    const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100)
+
     const supabase = getSupabase()
     const activities: ActivityItem[] = []
 
@@ -111,7 +114,7 @@ export async function GET() {
 
     // Fetch recent activity logs (deletions, bulk actions, etc.)
     try {
-      const activityLogs = await getRecentActivityLogs(15)
+      const activityLogs = await getRecentActivityLogs(Math.max(limit, 30))
       console.log('[ACTIVITY] Activity logs fetched:', activityLogs.length)
       activityLogs.forEach(log => {
         const metadata = log.metadata as Record<string, unknown> | undefined
@@ -213,9 +216,9 @@ export async function GET() {
       return dateB - dateA
     })
 
-    // Return top 5
+    // Return top N activities based on limit
     return NextResponse.json({
-      activities: activities.slice(0, 5),
+      activities: activities.slice(0, limit),
     })
   } catch (error) {
     console.error('[ACTIVITY] Error:', error)

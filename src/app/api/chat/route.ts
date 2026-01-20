@@ -169,6 +169,29 @@ const tools: Anthropic.Tool[] = [
       required: []
     }
   },
+  {
+    name: 'list_tasks',
+    description: 'List tasks from Asana with optional filters. Can filter by status (incomplete/completed), due date (overdue/today/this_week/upcoming), or section.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        filter: {
+          type: 'string',
+          enum: ['all', 'incomplete', 'completed', 'overdue', 'today', 'this_week', 'upcoming'],
+          description: 'Filter tasks by status or due date'
+        },
+        section: {
+          type: 'string',
+          description: 'Optional: filter by section name (e.g., "GTM Strategy & Planning")'
+        },
+        limit: {
+          type: 'number',
+          description: 'Max tasks to return (default 10)'
+        }
+      },
+      required: []
+    }
+  },
 
   // QUERY TOOLS
   {
@@ -591,6 +614,107 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         const success = await asanaCompleteTask(taskGid, true)
         if (!success) return 'Failed to complete task'
         return `Successfully marked task as complete`
+      }
+
+      case 'list_tasks': {
+        const { filter, section, limit } = input as { filter?: string; section?: string; limit?: number }
+        const maxTasks = limit || 10
+
+        // Fetch all tasks
+        const allTasks = await getProjectTasks()
+
+        // Apply filters
+        let filteredTasks = [...allTasks]
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+
+        const weekFromNow = new Date(today)
+        weekFromNow.setDate(weekFromNow.getDate() + 7)
+
+        const twoWeeksFromNow = new Date(today)
+        twoWeeksFromNow.setDate(twoWeeksFromNow.getDate() + 14)
+
+        switch (filter) {
+          case 'incomplete':
+            filteredTasks = filteredTasks.filter(t => !t.completed)
+            break
+          case 'completed':
+            filteredTasks = filteredTasks.filter(t => t.completed)
+            break
+          case 'overdue':
+            filteredTasks = filteredTasks.filter(t => {
+              if (!t.due_on || t.completed) return false
+              const dueDate = new Date(t.due_on)
+              return dueDate < today
+            })
+            break
+          case 'today':
+            filteredTasks = filteredTasks.filter(t => {
+              if (!t.due_on) return false
+              const dueDate = new Date(t.due_on)
+              return dueDate.getFullYear() === today.getFullYear() &&
+                     dueDate.getMonth() === today.getMonth() &&
+                     dueDate.getDate() === today.getDate()
+            })
+            break
+          case 'this_week':
+            filteredTasks = filteredTasks.filter(t => {
+              if (!t.due_on || t.completed) return false
+              const dueDate = new Date(t.due_on)
+              return dueDate >= today && dueDate <= weekFromNow
+            })
+            break
+          case 'upcoming':
+            filteredTasks = filteredTasks.filter(t => {
+              if (!t.due_on || t.completed) return false
+              const dueDate = new Date(t.due_on)
+              return dueDate >= today && dueDate <= twoWeeksFromNow
+            })
+            break
+          case 'all':
+          default:
+            // No filtering
+            break
+        }
+
+        // Apply section filter
+        if (section) {
+          filteredTasks = filteredTasks.filter(t => {
+            if (!t.memberships || t.memberships.length === 0) return false
+            return t.memberships.some(m =>
+              m.section.name.toLowerCase().includes(section.toLowerCase())
+            )
+          })
+        }
+
+        // Sort by due date (soonest first, no due date last)
+        filteredTasks.sort((a, b) => {
+          if (!a.due_on && !b.due_on) return 0
+          if (!a.due_on) return 1
+          if (!b.due_on) return -1
+          return new Date(a.due_on).getTime() - new Date(b.due_on).getTime()
+        })
+
+        // Limit results
+        const limitedTasks = filteredTasks.slice(0, maxTasks)
+
+        if (limitedTasks.length === 0) {
+          return `No tasks found${filter && filter !== 'all' ? ` matching filter "${filter}"` : ''}${section ? ` in section "${section}"` : ''}.`
+        }
+
+        // Format output
+        const taskList = limitedTasks.map(t => {
+          const status = t.completed ? '✓' : '○'
+          const dueStr = t.due_on ? ` (due ${t.due_on})` : ''
+          const sectionStr = t.memberships?.[0]?.section?.name ? ` [${t.memberships[0].section.name}]` : ''
+          return `${status} ${t.name}${dueStr}${sectionStr}`
+        }).join('\n')
+
+        const filterDesc = filter && filter !== 'all' ? ` (${filter})` : ''
+        const sectionDesc = section ? ` in "${section}"` : ''
+        const countNote = filteredTasks.length > maxTasks ? `\n\n(Showing ${maxTasks} of ${filteredTasks.length} tasks)` : ''
+
+        return `**Tasks${filterDesc}${sectionDesc}:**\n${taskList}${countNote}`
       }
 
       case 'get_deals_by_stage': {
