@@ -8,6 +8,51 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
+// =============================================================================
+// CACHING LAYER - Reduces redundant API calls
+// =============================================================================
+
+interface CacheEntry<T> {
+  data: T
+  timestamp: number
+}
+
+// Cache storage
+const cache = {
+  crmSummary: null as CacheEntry<CRMSummary> | null,
+  asanaTasks: null as CacheEntry<AsanaTask[]> | null,
+}
+
+// TTL constants (in milliseconds)
+const CRM_SUMMARY_TTL = 60 * 1000      // 60 seconds
+const ASANA_TASKS_TTL = 5 * 60 * 1000  // 5 minutes
+
+// Cache invalidation functions
+function invalidateCRMCache() {
+  cache.crmSummary = null
+  console.log('[CACHE] CRM summary cache invalidated')
+}
+
+function invalidateAsanaCache() {
+  cache.asanaTasks = null
+  console.log('[CACHE] Asana tasks cache invalidated')
+}
+
+// Cached Asana tasks fetcher
+async function getCachedAsanaTasks(): Promise<AsanaTask[]> {
+  const now = Date.now()
+
+  if (cache.asanaTasks && (now - cache.asanaTasks.timestamp) < ASANA_TASKS_TTL) {
+    console.log('[CACHE] Using cached Asana tasks')
+    return cache.asanaTasks.data
+  }
+
+  console.log('[CACHE] Fetching fresh Asana tasks')
+  const tasks = await getProjectTasks()
+  cache.asanaTasks = { data: tasks, timestamp: now }
+  return tasks
+}
+
 interface NoteRow {
   id: string
   deal_id: string | null
@@ -377,15 +422,22 @@ const tools: Anthropic.Tool[] = [
   }
 ]
 
+// Helper to get base URL from request
+function getBaseUrl(request: NextRequest): string {
+  const host = request.headers.get('host') || 'localhost:3000'
+  const protocol = request.headers.get('x-forwarded-proto') || 'http'
+  return `${protocol}://${host}`
+}
+
 // Tool execution functions
-async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
+async function executeTool(name: string, input: Record<string, unknown>, baseUrl: string): Promise<string> {
   // Minimal logging - timing is tracked at higher level
   try {
     switch (name) {
       case 'delete_deal': {
         const { deal_id } = input as { deal_id: string }
         // Use the single-deal delete API for soft delete and logging
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/${deal_id}`, {
+        const response = await fetch(`${baseUrl}/api/deals/${deal_id}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
         })
@@ -394,18 +446,20 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           console.error(`[CHAT TOOL] delete_deal failed:`, result)
           return `Error deleting deal: ${result.error || 'Unknown error'}`
         }
+        invalidateCRMCache()
         return `Successfully deleted deal "${result.company || deal_id}"`
       }
 
       case 'update_deal_stage': {
         const { deal_id, new_stage } = input as { deal_id: string; new_stage: string }
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-update`, {
+        const response = await fetch(`${baseUrl}/api/deals/bulk-update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids: [deal_id], updates: { stage: new_stage }, triggeredBy: 'chat' }),
         })
         const result = await response.json()
         if (result.error) return `Error updating deal: ${result.error}`
+        invalidateCRMCache()
         const companyName = result.companies?.[0] || 'Unknown'
         return `Successfully moved "${companyName}" to ${new_stage}`
       }
@@ -422,13 +476,14 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         const ids = (dealsInStage || []).map((d: { id: string }) => d.id)
         if (ids.length === 0) return `No deals found in ${from_stage} stage`
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-update`, {
+        const response = await fetch(`${baseUrl}/api/deals/bulk-update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids, updates: { stage: to_stage }, triggeredBy: 'chat' }),
         })
         const result = await response.json()
         if (result.error) return `Error updating deals: ${result.error}`
+        invalidateCRMCache()
         return `Successfully moved ${result.updated} deals from ${from_stage} to ${to_stage}`
       }
 
@@ -449,6 +504,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           .select()
           .single()
         if (error) return `Error creating deal: ${error.message}`
+        invalidateCRMCache()
         const createdDeal = data as { id: string } | null
         return `Successfully created deal "${company}" (ID: ${createdDeal?.id}) in ${stage || 'lead'} stage`
       }
@@ -470,13 +526,14 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         if (ids.length === 0) return `No deals found in ${stage} stage`
 
         // Use bulk-delete API for soft delete and logging
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-delete`, {
+        const response = await fetch(`${baseUrl}/api/deals/bulk-delete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids, triggeredBy: 'chat' }),
         })
         const result = await response.json()
         if (result.error) return `Error deleting deals: ${result.error}`
+        invalidateCRMCache()
         return `Successfully deleted ${result.deleted} deals from ${stage} stage`
       }
 
@@ -506,6 +563,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           .from('notes')
           .insert(noteData as never)
         if (error) return `Error adding note: ${error.message}`
+        invalidateCRMCache()
         return `Successfully added note to deal`
       }
 
@@ -531,6 +589,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           .from('notes')
           .insert(noteData as never)
         if (error) return `Error adding note: ${error.message}`
+        invalidateCRMCache()
         return `Successfully added note to "${deal.company}"`
       }
 
@@ -594,6 +653,8 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           })
         }
 
+        invalidateAsanaCache()
+        invalidateCRMCache()  // Task count in summary
         return `Successfully created task "${name}"${due_date ? ` due ${due_date}` : ''}${section_name ? ` in section "${section_name}"` : ''}`
       }
 
@@ -602,8 +663,8 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         let taskGid = task_id
 
         if (!taskGid && task_name) {
-          // Find task by name
-          const tasks = await getProjectTasks()
+          // Find task by name - use cached tasks
+          const tasks = await getCachedAsanaTasks()
           const task = tasks.find(t => t.name.toLowerCase().includes(task_name.toLowerCase()))
           if (!task) return `No task found matching "${task_name}"`
           taskGid = task.gid
@@ -613,6 +674,8 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
         const success = await asanaCompleteTask(taskGid, true)
         if (!success) return 'Failed to complete task'
+        invalidateAsanaCache()
+        invalidateCRMCache()  // Task count in summary
         return `Successfully marked task as complete`
       }
 
@@ -620,8 +683,8 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         const { filter, section, limit } = input as { filter?: string; section?: string; limit?: number }
         const maxTasks = limit || 10
 
-        // Fetch all tasks
-        const allTasks = await getProjectTasks()
+        // Fetch all tasks - use cached version
+        const allTasks = await getCachedAsanaTasks()
 
         // Apply filters
         let filteredTasks = [...allTasks]
@@ -759,7 +822,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         }
 
         // Call the bulk-query API endpoint
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-query`, {
+        const response = await fetch(`${baseUrl}/api/deals/bulk-query`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filters }),
@@ -786,7 +849,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         }
 
         // Call the bulk-delete API endpoint
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-delete`, {
+        const response = await fetch(`${baseUrl}/api/deals/bulk-delete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids }),
@@ -794,7 +857,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
         const result = await response.json()
         if (result.error) return `Error deleting deals: ${result.error}`
-
+        invalidateCRMCache()
         return `Successfully deleted ${result.deleted} deal(s).`
       }
 
@@ -812,20 +875,20 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           return `CONFIRMATION REQUIRED: This will update ${ids.length} deal(s) with: ${updateFields}. Please ask the user to confirm.`
         }
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-update`, {
+        const response = await fetch(`${baseUrl}/api/deals/bulk-update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids, updates, triggeredBy: 'chat' }),
         })
         const result = await response.json()
         if (result.error) return `Error updating deals: ${result.error}`
-
+        invalidateCRMCache()
         return `Successfully updated ${result.updated} deal(s). Fields changed: ${result.fields.join(', ')}`
       }
 
       case 'analyze_pipeline': {
         // Call the bulk-analyze API endpoint
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-analyze`, {
+        const response = await fetch(`${baseUrl}/api/deals/bulk-analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         })
@@ -870,7 +933,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
 
       case 'analyze_tasks': {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/tasks/bulk-analyze`, {
+        const response = await fetch(`${baseUrl}/api/tasks/bulk-analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         })
@@ -907,7 +970,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
 
       case 'analyze_notes': {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/notes/bulk-analyze`, {
+        const response = await fetch(`${baseUrl}/api/notes/bulk-analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         })
@@ -938,7 +1001,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
 
       case 'check_pipeline_health': {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/pipeline/health`, {
+        const response = await fetch(`${baseUrl}/api/pipeline/health`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         })
@@ -989,7 +1052,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       case 'delete_deals_by_company_names': {
         const { companies, confirmed } = input as { companies: string[]; confirmed?: boolean }
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/delete-by-companies`, {
+        const response = await fetch(`${baseUrl}/api/deals/delete-by-companies`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ companies, confirmed }),
@@ -1001,14 +1064,14 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         if (result.preview) {
           return `Found ${result.count} deal(s) to delete:\n${result.companies.map((c: string) => `- ${c}`).join('\n')}\n\nPlease confirm deletion.`
         }
-
+        invalidateCRMCache()
         return `Successfully deleted ${result.deleted} deal(s):\n${result.companies.map((c: string) => `- ${c}`).join('\n')}`
       }
 
       case 'search_and_delete_deals': {
         const { search_terms, confirm } = input as { search_terms: string[]; confirm?: boolean }
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/search-and-delete`, {
+        const response = await fetch(`${baseUrl}/api/deals/search-and-delete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ search_terms, confirm }),
@@ -1026,29 +1089,31 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           output += `\nConfirm to delete these ${result.count} deals.`
           return output
         }
-
+        invalidateCRMCache()
         return `Successfully deleted ${result.deleted} deal(s):\n${result.companies.map((c: string) => `- ${c}`).join('\n')}`
       }
 
       case 'move_deals_by_company': {
         const { company_names, to_stage, confirm } = input as { company_names: string[]; to_stage: string; confirm?: boolean }
 
-        // Find all matching deals with fuzzy match on each company name
-        const matches: { id: string; company: string; stage: string }[] = []
-        for (const name of company_names) {
-          const { data, error } = await (supabase as any)
-            .from('deals')
-            .select('id, company, stage')
-            .ilike('company', `%${name}%`)
-            .is('deleted_at', null)
-          if (error) {
-            console.error(`[MOVE] Error finding deals for "${name}":`, error)
-          }
-          if (data) matches.push(...data)
+        // Build a single OR query for all company names (replaces N sequential queries)
+        const orConditions = company_names
+          .map(name => `company.ilike.%${name}%`)
+          .join(',')
+
+        const { data: matches, error } = await (supabase as any)
+          .from('deals')
+          .select('id, company, stage')
+          .or(orConditions)
+          .is('deleted_at', null)
+
+        if (error) {
+          console.error(`[MOVE] Error finding deals:`, error)
+          return `Error searching for deals: ${error.message}`
         }
 
-        // Dedupe by ID
-        const uniqueDeals = Array.from(new Map(matches.map(d => [d.id, d])).values())
+        // Dedupe by ID (in case of overlapping matches)
+        const uniqueDeals = Array.from(new Map((matches || []).map((d: { id: string; company: string; stage: string }) => [d.id, d])).values())
 
         if (uniqueDeals.length === 0) {
           return `No deals found matching: ${company_names.join(', ')}`
@@ -1062,7 +1127,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         const ids = uniqueDeals.map(d => d.id)
         console.log(`[MOVE] Moving ${ids.length} deals to ${to_stage}:`, ids)
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/deals/bulk-update`, {
+        const response = await fetch(`${baseUrl}/api/deals/bulk-update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids, updates: { stage: to_stage }, triggeredBy: 'chat' }),
@@ -1081,7 +1146,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
         if (result.error) return `Error: ${result.error}`
         if (!result.success) return `Error: Update failed - ${result.message || 'unknown reason'}`
-
+        invalidateCRMCache()
         return `Moved ${result.updated} deal(s) to ${to_stage}:\n${(result.companies || []).map((c: string) => `- ${c}`).join('\n')}`
       }
 
@@ -1094,11 +1159,21 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 }
 
 async function getCRMSummary(): Promise<CRMSummary> {
-  // Get summary stats instead of full data to stay under token limits
+  const now = Date.now()
+
+  // Check cache first
+  if (cache.crmSummary && (now - cache.crmSummary.timestamp) < CRM_SUMMARY_TTL) {
+    console.log('[CACHE] Using cached CRM summary')
+    return cache.crmSummary.data
+  }
+
+  console.log('[CACHE] Fetching fresh CRM summary')
+
+  // Get summary stats - use cached Asana tasks (5 min TTL)
   const [dealsRes, notesRes, asanaTasks] = await Promise.all([
     supabase.from('deals').select('id, company, stage'),
     supabase.from('notes').select('id'),
-    getProjectTasks(),
+    getCachedAsanaTasks(),  // Uses 5-minute cache
   ])
 
   const deals = dealsRes.data as { id: string; company: string; stage: string }[] || []
@@ -1114,7 +1189,7 @@ async function getCRMSummary(): Promise<CRMSummary> {
   // Get recent/active deals (limit to 20 for context)
   const sampleDeals = deals.slice(0, 20).map(d => d.company)
 
-  return {
+  const summary: CRMSummary = {
     totalDeals: deals.length,
     totalNotes: notes.length,
     totalTasks: tasks.length,
@@ -1126,11 +1201,17 @@ async function getCRMSummary(): Promise<CRMSummary> {
       due_on: t.due_on || null,
     })),
   }
+
+  // Store in cache
+  cache.crmSummary = { data: summary, timestamp: now }
+
+  return summary
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { messages } = await request.json()
+    const baseUrl = getBaseUrl(request)
 
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json(
@@ -1154,6 +1235,15 @@ export async function POST(request: NextRequest) {
           }))]
 
           let continueLoop = true
+          let dataChanged = false  // Track if any data-modifying tool was executed
+
+          // Tools that modify data (for dataChanged flag)
+          const DATA_MODIFYING_TOOLS = new Set([
+            'delete_deal', 'update_deal_stage', 'bulk_update_stage', 'create_deal',
+            'delete_deals_by_stage', 'add_note_to_deal', 'add_note_by_company',
+            'create_task', 'complete_task', 'bulk_delete_deals', 'bulk_update_deals',
+            'delete_deals_by_company_names', 'search_and_delete_deals', 'move_deals_by_company'
+          ])
 
           let loopCount = 0
           const MAX_TOOL_LOOPS = 10  // Safety limit to prevent infinite loops
@@ -1245,13 +1335,17 @@ export async function POST(request: NextRequest) {
               const toolStartTime = Date.now()
               for (const toolUse of toolUseBlocks) {
                 const toolExecStart = Date.now()
-                const result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>)
+                const result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, baseUrl)
                 console.log(`[CHAT] Tool ${toolUse.name} took ${Date.now() - toolExecStart}ms`)
                 toolResults.push({
                   type: 'tool_result',
                   tool_use_id: toolUse.id,
                   content: result,
                 })
+                // Track if this tool modified data
+                if (DATA_MODIFYING_TOOLS.has(toolUse.name) && !result.startsWith('Error') && !result.includes('CONFIRMATION REQUIRED')) {
+                  dataChanged = true
+                }
               }
 
               // Add assistant message with tool calls
@@ -1278,6 +1372,11 @@ export async function POST(request: NextRequest) {
           if (loopCount >= MAX_TOOL_LOOPS) {
             console.warn(`[CHAT] Hit max tool loop limit (${MAX_TOOL_LOOPS})`)
             controller.enqueue(encoder.encode('\n\n[Stopped: too many tool calls]'))
+          }
+
+          // Signal to frontend if data was modified (for smart refresh)
+          if (dataChanged) {
+            controller.enqueue(encoder.encode('\n[DATA_CHANGED]\n'))
           }
 
           controller.close()

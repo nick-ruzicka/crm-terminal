@@ -244,8 +244,7 @@ export default function Dashboard() {
           console.log('[DASHBOARD] Using localStorage cache (age: ' + Math.round(age/1000) + 's)')
           setBackgroundSuggestions(cachedSuggestions)
           setIsLoadingSuggestions(false)
-          // Still refresh in background
-          refreshSuggestionsInBackground()
+          // Cache is valid - no need to refresh (removes duplicate fetch)
           return cachedSuggestions
         }
       }
@@ -518,7 +517,9 @@ export default function Dashboard() {
             }
           }
 
-          const cleanContent = accumulatedContent.replace(/\[Using \w+\.\.\.\]\n?/g, '')
+          const cleanContent = accumulatedContent
+            .replace(/\[Using \w+\.\.\.\]\n?/g, '')
+            .replace(/\[DATA_CHANGED\]\n?/g, '')
 
           setMessages(prev => {
             const updated = [...prev]
@@ -532,7 +533,12 @@ export default function Dashboard() {
         }
       }
 
-      const finalContent = (accumulatedContent || 'Action completed.').replace(/\[Using \w+\.\.\.\]\n?/g, '')
+      // Check if data was modified (backend sends [DATA_CHANGED] marker)
+      const dataChanged = accumulatedContent.includes('[DATA_CHANGED]')
+
+      const finalContent = (accumulatedContent || 'Action completed.')
+        .replace(/\[Using \w+\.\.\.\]\n?/g, '')
+        .replace(/\[DATA_CHANGED\]\n?/g, '')
 
       if (sessionId) {
         await saveMessage(sessionId, 'assistant', finalContent)
@@ -545,9 +551,11 @@ export default function Dashboard() {
         })
       }
 
-      // Refresh stats after chat action
-      fetchStats()
-      fetchOverdueTasks()
+      // Only refresh stats if data was actually modified
+      if (dataChanged) {
+        fetchStats()
+        fetchOverdueTasks()
+      }
     } catch (error) {
       const errorContent = error instanceof Error ? `Error: ${error.message}` : 'Failed to connect to the server.'
       setMessages(prev => {
