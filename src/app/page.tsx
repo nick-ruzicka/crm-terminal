@@ -8,12 +8,20 @@ import { useToast } from '@/components/Toast'
 import { SuggestionCardsContainer, type Suggestion } from '@/components/SuggestionCard'
 import { Package, AlertCircle, ClipboardList, Trash2, FileText, RotateCcw, ArrowRightCircle, Sparkles, RefreshCw } from 'lucide-react'
 
+interface TokenUsage {
+  input: number
+  output: number
+  total: number
+  cost: number
+}
+
 interface Message {
   id?: string
   role: 'user' | 'assistant'
   content: string
   activeTool?: string | null
   suggestions?: Suggestion[]
+  usage?: TokenUsage
 }
 
 interface ChatSession {
@@ -519,6 +527,7 @@ export default function Dashboard() {
 
           const cleanContent = accumulatedContent
             .replace(/\[Using \w+\.\.\.\]\n?/g, '')
+            .replace(/\[META:\{.*?\}\]\n?/g, '')
             .replace(/\[DATA_CHANGED\]\n?/g, '')
 
           setMessages(prev => {
@@ -533,12 +542,39 @@ export default function Dashboard() {
         }
       }
 
-      // Check if data was modified (backend sends [DATA_CHANGED] marker)
-      const dataChanged = accumulatedContent.includes('[DATA_CHANGED]')
+      // Parse metadata from response (includes dataChanged and usage stats)
+      let dataChanged = false
+      let usage: TokenUsage | undefined
+      const metaMatch = accumulatedContent.match(/\[META:(\{.*?\})\]/)
+      if (metaMatch) {
+        try {
+          const meta = JSON.parse(metaMatch[1])
+          dataChanged = meta.dataChanged || false
+          usage = meta.usage
+        } catch {
+          // Failed to parse meta, fallback to old check
+          dataChanged = accumulatedContent.includes('[DATA_CHANGED]')
+        }
+      }
 
       const finalContent = (accumulatedContent || 'Action completed.')
         .replace(/\[Using \w+\.\.\.\]\n?/g, '')
+        .replace(/\[META:\{.*?\}\]\n?/g, '')
         .replace(/\[DATA_CHANGED\]\n?/g, '')
+
+      // Update message with usage info
+      if (usage) {
+        setMessages(prev => {
+          const updated = [...prev]
+          updated[assistantMessageIndex] = {
+            ...updated[assistantMessageIndex],
+            content: finalContent,
+            activeTool: null,
+            usage,
+          }
+          return updated
+        })
+      }
 
       if (sessionId) {
         await saveMessage(sessionId, 'assistant', finalContent)
@@ -929,6 +965,16 @@ export default function Dashboard() {
                             <div className="tool-indicator">
                               <span className="tool-spinner" />
                               <span className="tool-name">{message.activeTool}</span>
+                            </div>
+                          )}
+                          {/* Token usage indicator */}
+                          {message.usage && (
+                            <div
+                              className={`token-usage ${message.usage.total > 10000 ? 'high-usage' : ''}`}
+                              title={`Input: ${message.usage.input.toLocaleString()} | Output: ${message.usage.output.toLocaleString()}`}
+                            >
+                              <span className="token-count">{message.usage.total.toLocaleString()} tokens</span>
+                              <span className="token-cost">${message.usage.cost.toFixed(4)}</span>
                             </div>
                           )}
                         </>

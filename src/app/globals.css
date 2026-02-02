@@ -1187,6 +1187,52 @@ tr:hover td {
   border-top-color: var(--accent-secondary);
 }
 
+/* Token usage indicator */
+.token-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  margin-top: 8px;
+  background: rgba(122, 155, 173, 0.1);
+  border: 1px solid rgba(122, 155, 173, 0.2);
+  border-radius: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: default;
+  transition: all 0.15s ease;
+}
+
+.token-usage:hover {
+  background: rgba(122, 155, 173, 0.15);
+  color: var(--text-secondary);
+}
+
+.token-count {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.token-cost {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* High usage warning */
+.token-usage.high-usage {
+  background: rgba(234, 179, 8, 0.15);
+  border-color: rgba(234, 179, 8, 0.3);
+}
+
+.token-usage.high-usage .token-count {
+  color: #eab308;
+}
+
+:root.light .token-usage {
+  background: rgba(91, 123, 140, 0.08);
+  border-color: rgba(91, 123, 140, 0.15);
+}
+
 /* Chat page layout with sidebar */
 .chat-page-layout {
   display: flex;
@@ -5212,6 +5258,35 @@ tr:hover td {
 
 .deals-search-input::placeholder {
   color: var(--text-muted);
+}
+
+.demo-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+}
+
+.demo-mode-toggle:hover {
+  border-color: var(--accent);
+}
+
+.demo-mode-toggle:has(input:checked) {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.demo-mode-toggle input {
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .stage-filter-pills {

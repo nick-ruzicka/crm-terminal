@@ -1113,7 +1113,11 @@ async function executeTool(name: string, input: Record<string, unknown>, baseUrl
         }
 
         // Dedupe by ID (in case of overlapping matches)
-        const uniqueDeals = Array.from(new Map((matches || []).map((d: { id: string; company: string; stage: string }) => [d.id, d])).values())
+        type DealMatch = { id: string; company: string; stage: string }
+        const matchList = (matches || []) as DealMatch[]
+        const uniqueDeals = Array.from(
+          new Map(matchList.map(d => [d.id, d])).values()
+        )
 
         if (uniqueDeals.length === 0) {
           return `No deals found matching: ${company_names.join(', ')}`
@@ -1237,6 +1241,11 @@ export async function POST(request: NextRequest) {
           let continueLoop = true
           let dataChanged = false  // Track if any data-modifying tool was executed
 
+          // Token usage tracking
+          let totalInputTokens = 0
+          let totalOutputTokens = 0
+          const toolsUsed: string[] = []
+
           // Tools that modify data (for dataChanged flag)
           const DATA_MODIFYING_TOOLS = new Set([
             'delete_deal', 'update_deal_stage', 'bulk_update_stage', 'create_deal',
@@ -1312,10 +1321,15 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            // Get final message to check stop reason
+            // Get final message to check stop reason and token usage
             const finalMessage = await stream.finalMessage()
             const apiTime = Date.now() - loopStartTime
-            console.log(`[CHAT] Response stop_reason: ${finalMessage.stop_reason} (API took ${apiTime}ms)`)
+
+            // Track token usage
+            const usage = finalMessage.usage
+            totalInputTokens += usage.input_tokens
+            totalOutputTokens += usage.output_tokens
+            console.log(`[CHAT] Loop ${loopCount}: ${usage.input_tokens} in / ${usage.output_tokens} out tokens (${apiTime}ms)`)
 
             // Add any text blocks to collected content
             for (const block of finalMessage.content) {
@@ -1342,6 +1356,10 @@ export async function POST(request: NextRequest) {
                   tool_use_id: toolUse.id,
                   content: result,
                 })
+                // Track tools used
+                if (!toolsUsed.includes(toolUse.name)) {
+                  toolsUsed.push(toolUse.name)
+                }
                 // Track if this tool modified data
                 if (DATA_MODIFYING_TOOLS.has(toolUse.name) && !result.startsWith('Error') && !result.includes('CONFIRMATION REQUIRED')) {
                   dataChanged = true
@@ -1365,19 +1383,47 @@ export async function POST(request: NextRequest) {
             } else {
               // No more tool calls, we're done
               continueLoop = false
-              console.log(`[CHAT] Complete in ${loopCount} loops, total time: ${Date.now() - chatStartTime}ms`)
             }
           }
+
+          // Log final token usage summary
+          const totalTime = Date.now() - chatStartTime
+          const totalTokens = totalInputTokens + totalOutputTokens
+          // Cost estimate: Sonnet is $3/M input, $15/M output
+          const estimatedCost = (totalInputTokens * 3 + totalOutputTokens * 15) / 1_000_000
+          console.log(`[CHAT] ✓ Complete: ${loopCount} loop(s), ${totalTime}ms, ${totalInputTokens} in + ${totalOutputTokens} out = ${totalTokens} tokens (~$${estimatedCost.toFixed(4)})`)
+
+          // Alert for high usage (>10k tokens)
+          const HIGH_USAGE_THRESHOLD = 10000
+          if (totalTokens > HIGH_USAGE_THRESHOLD) {
+            console.warn(`[CHAT] ⚠️ HIGH USAGE: ${totalTokens} tokens exceeds ${HIGH_USAGE_THRESHOLD} threshold`)
+          }
+
+          // Save usage to database (async, don't block response)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(supabase as any).from('token_usage').insert({
+            input_tokens: totalInputTokens,
+            output_tokens: totalOutputTokens,
+            estimated_cost: estimatedCost,
+            model: 'claude-sonnet-4-20250514',
+            loops: loopCount,
+            duration_ms: totalTime,
+            tools_used: toolsUsed,
+          }).then(({ error }: { error: Error | null }) => {
+            if (error) console.error('[CHAT] Failed to save token usage:', error.message)
+          })
 
           if (loopCount >= MAX_TOOL_LOOPS) {
             console.warn(`[CHAT] Hit max tool loop limit (${MAX_TOOL_LOOPS})`)
             controller.enqueue(encoder.encode('\n\n[Stopped: too many tool calls]'))
           }
 
-          // Signal to frontend if data was modified (for smart refresh)
-          if (dataChanged) {
-            controller.enqueue(encoder.encode('\n[DATA_CHANGED]\n'))
+          // Signal to frontend with metadata (data changed flag + usage stats)
+          const metadata = {
+            dataChanged,
+            usage: { input: totalInputTokens, output: totalOutputTokens, total: totalTokens, cost: estimatedCost }
           }
+          controller.enqueue(encoder.encode(`\n[META:${JSON.stringify(metadata)}]\n`))
 
           controller.close()
         } catch (error) {
