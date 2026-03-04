@@ -8,6 +8,18 @@ import { NewDealModal, DealDetailPanel } from './DealModals'
 import { STAGES } from '@/constants/stages'
 import type { Deal } from '@/types/database'
 
+// Demo company names for filtering
+const DEMO_COMPANIES = [
+  'Hooli', 'Pied Piper', 'Initech', 'Vandelay Industries', 'Stark Industries',
+  'Wayne Enterprises', 'Acme Corp', 'Globex', 'Dunder Mifflin', 'Prestige Worldwide',
+  'Umbrella Corp', 'Bluth Company', 'Wonka Industries', 'Cyberdyne', 'Skynet',
+  'Weyland-Yutani', 'Tyrell Corp', 'Oscorp', 'LexCorp', 'Gekko & Co',
+  'Nakatomi Trading', 'Genco Olive Oil', 'Sterling Cooper', 'Pearson Hardman',
+  'Wolfram & Hart', 'InGen', 'Soylent Corp', 'Omni Consumer Products', 'Rekall',
+  'Virtucon', 'Massive Dynamic', 'Bada Bing Entertainment', "Satriale's Pork Store",
+  'Nuovo Vesuvio Holdings', 'Barone Sanitation', 'Webistics'
+]
+
 interface DealsViewProps {
   deals: Deal[]
   stages: string[]
@@ -26,10 +38,19 @@ export function DealsView({ deals, stages }: DealsViewProps) {
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [stageFilter, setStageFilter] = useState('all')
+  const [demoMode, setDemoMode] = useState(false)
 
-  // Filter deals based on search and stage
+  // Filter deals based on search, stage, and demo mode
   const filteredDeals = useMemo(() => {
     return allDeals.filter(deal => {
+      // Demo mode filter
+      if (demoMode) {
+        const isDemo = DEMO_COMPANIES.some(demo =>
+          (deal.company || '').toLowerCase() === demo.toLowerCase()
+        )
+        if (!isDemo) return false
+      }
+
       // Search filter
       const matchesSearch = searchQuery === '' ||
         (deal.company || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -40,13 +61,17 @@ export function DealsView({ deals, stages }: DealsViewProps) {
 
       return matchesSearch && matchesStage
     })
-  }, [allDeals, searchQuery, stageFilter])
+  }, [allDeals, searchQuery, stageFilter, demoMode])
 
   useEffect(() => {
     setMounted(true)
     const stored = localStorage.getItem('deals-view') as ViewMode | null
     if (stored === 'list' || stored === 'board') {
       setView(stored)
+    }
+    const storedDemoMode = localStorage.getItem('deals-demo-mode')
+    if (storedDemoMode === 'true') {
+      setDemoMode(true)
     }
   }, [])
 
@@ -122,6 +147,17 @@ export function DealsView({ deals, stages }: DealsViewProps) {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="deals-search-input"
         />
+        <label className="demo-mode-toggle">
+          <input
+            type="checkbox"
+            checked={demoMode}
+            onChange={(e) => {
+              setDemoMode(e.target.checked)
+              localStorage.setItem('deals-demo-mode', e.target.checked.toString())
+            }}
+          />
+          <span>Demo Mode</span>
+        </label>
         <div className="stage-filter-pills">
           {FILTER_STAGES.map(stage => (
             <button

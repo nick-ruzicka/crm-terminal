@@ -1,5 +1,5 @@
 const ASANA_BASE_URL = 'https://app.asana.com/api/1.0'
-const MY_ASANA_USER_GID = process.env.ASANA_USER_GID || '1208992636286349' // Nick's user ID
+const MY_ASANA_USER_GID = process.env.ASANA_USER_GID || ''
 
 export interface AsanaTask {
   gid: string
