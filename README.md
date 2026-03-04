@@ -16,7 +16,7 @@ Dispatch is a pipeline management terminal with a natural language interface pow
 "Find every conversation where someone mentioned pricing."
 ```
 
-It replaced HubSpot at [Linera](https://linera.io) — a Layer 1 blockchain company — where I ran BD as a one-person GTM function. Deals, contacts, meeting notes, and pipeline all flow into one queryable interface.
+It replaced HubSpot at [Linera](https://linera.io) — a Layer 1 blockchain company — where I run BD and GTM engineering. Deals, contacts, meeting notes, and pipeline all flow into one queryable interface.
 
 ---
 
@@ -133,4 +133,4 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
-*Built by [Nick Ruzicka](https://github.com/nick-ruzicka) — GTM Engineer & BD leader. Previously Head of BD at Linera, founding AE at Rivery (acq. Boomi), Oracle.*
+*Built by [Nick Ruzicka](https://github.com/nick-ruzicka) — Head of BD & GTM Engineering at [Linera](https://linera.io). Previously founding AE at Rivery (acq. Boomi), Oracle.*
