@@ -1,4 +1,4 @@
-# CRM Terminal
+# Dispatch CRM Terminal
 
 A Next.js app for managing deals, contacts, and notes from Supabase with an AI-powered chat interface.
 
